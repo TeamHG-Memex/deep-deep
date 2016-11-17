@@ -1,6 +1,6 @@
 scrapy==1.1.1
 networkx==1.11
-scikit-learn==0.17.1
+scikit-learn==0.18
 joblib
 psutil
 numpy
@@ -9,4 +9,4 @@ scrapy-cdr
 tldextract
 stop-words
 docopt
-tensorboard_logger>=0.0.2
+tensorboard_logger>=0.0.3
