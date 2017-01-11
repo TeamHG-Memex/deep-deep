@@ -160,4 +160,4 @@ class ClassifierRelevancySpider(_RelevancySpider):
         else:
             raise ValueError("self.classifier_input is invalid")
 
-        return self.relevancy_clf.predict_proba([x])[0, 1]
+        return float(self.relevancy_clf.predict_proba([x])[0, 1])
