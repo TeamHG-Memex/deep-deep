@@ -282,7 +282,8 @@ class QSpider(BaseSpider, metaclass=abc.ABCMeta):
         if reward > 0.5:
             self.relevant_domains.add(domain)
 
-        return list(self._links_to_requests(links, links_matrix)), reward
+        return (list(self._links_to_requests(response, links, links_matrix)),
+                reward)
 
     def _extract_links(self, response: TextResponse) -> List[Dict]:
         """ Return a list of all unique links on a page """
@@ -294,6 +295,7 @@ class QSpider(BaseSpider, metaclass=abc.ABCMeta):
         ))
 
     def _links_to_requests(self,
+                           response: TextResponse,
                            links: List[Dict],
                            links_matrix: sp.csr_matrix,
                            ) -> Iterator[scrapy.Request]:
