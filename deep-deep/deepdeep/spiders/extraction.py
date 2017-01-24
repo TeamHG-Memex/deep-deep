@@ -50,6 +50,12 @@ class ExtractionSpider(QSpider):
     This spider learns how to extract data from a single domain.
     """
     name = 'extraction'
+    use_urls = 1
+    use_same_domain = 0  # not supported by eli5 yet, and we don't need it
+    # copied from relevancy spider
+    balancing_temperature = 0.1
+    replay_sample_size = 50
+    replay_maxsize = 100000  # decrease it to ~10K if use_pages is 1
 
     def get_goal(self):
         return ExtractionGoal(example_forum_extractor)
