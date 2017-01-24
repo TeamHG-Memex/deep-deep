@@ -361,7 +361,10 @@ class QLearner:
 
     def __getstate__(self):
         dct = self.__dict__.copy()
-        del dct['on_model_changed']
+        try:
+            del dct['on_model_changed']
+        except KeyError:
+            pass
         if not self.pickle_memory:
             dct['memory'] = ExperienceMemory()
         return dct
