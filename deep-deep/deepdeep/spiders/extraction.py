@@ -63,6 +63,11 @@ class ExtractionSpider(QSpider):
     replay_sample_size = 50
     replay_maxsize = 100000  # decrease it to ~10K if use_pages is 1
 
+    n_copies = 10
+
+    _ARGS = {'n_copies'} | QSpider._ARGS
+    ALLOWED_ARGUMENTS = _ARGS | QSpider.ALLOWED_ARGUMENTS
+
     def get_goal(self):
         return ExtractionGoal(example_forum_extractor)
 
@@ -74,17 +79,19 @@ class ExtractionSpider(QSpider):
         DUPEFILTER_CLASS='deepdeep.spiders.extraction.RunAwareDupeFilter',
         **QSpider.custom_settings)
 
+    def __init__(self, *args, **kwargs) -> None:
+        super().__init__(*args, **kwargs)
+        self.n_copies = int(self.n_copies)
+
     def _parse_seeds(self, response):
-        n_copies = 10
         for orig_req in super()._parse_seeds(response):
-            for idx in range(n_copies):
+            for idx in range(self.n_copies):
                 req = orig_req.copy()
                 set_run_id(req, 'run-{}'.format(idx))
                 yield req
 
     def _links_to_requests(self, response, *args, **kwargs):
         run_id = response.request.meta['run_id']
-        print(run_id, response.url)
         for req in super()._links_to_requests(response, *args, **kwargs):
             set_run_id(req, run_id)
             yield req
