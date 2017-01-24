@@ -51,7 +51,7 @@ class RequestsPriorityQueue(Sized):
     In-memory priority queue for requests.
 
     Unlike default Scrapy queues it supports high-cardinality priorities
-    (but no float priorities becase scrapy.Request doesn't support them).
+    (but no float priorities because scrapy.Request doesn't support them).
 
     This queue allows to change request priorities. To do it
 
