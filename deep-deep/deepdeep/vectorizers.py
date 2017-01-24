@@ -15,7 +15,8 @@ from deepdeep.utils import url_path_query, html2text, canonicalize_url
 
 def LinkVectorizer(use_url: bool=False,
                    use_full_url: bool=False,
-                   use_same_domain: bool=True
+                   use_same_domain: bool=True,
+                   use_link_text: bool=True,
                    ):
     """
     Vectorizer for converting link dicts to feature vectors.
@@ -25,16 +26,17 @@ def LinkVectorizer(use_url: bool=False,
 
     vectorizers = []
 
-    text_vec = HashingVectorizer(
-        preprocessor=_link_inside_text,
-        n_features=1024*1024,
-        binary=True,
-        norm='l2',
-        # ngram_range=(1, 2),
-        analyzer='char',
-        ngram_range=(3, 5),
-    )
-    vectorizers.append(text_vec)
+    if use_link_text:
+        text_vec = HashingVectorizer(
+            preprocessor=_link_inside_text,
+            n_features=1024*1024,
+            binary=True,
+            norm='l2',
+            # ngram_range=(1, 2),
+            analyzer='char',
+            ngram_range=(3, 5),
+        )
+        vectorizers.append(text_vec)
 
     if use_same_domain:
         same_domain = FunctionTransformer(_same_domain_feature, validate=False)
@@ -50,6 +52,9 @@ def LinkVectorizer(use_url: bool=False,
             ngram_range=(4, 5),
         )
         vectorizers.append(url_vec)
+
+    if not vectorizers:
+        raise ValueError('Please enable at least one vectorizer')
 
     return make_union(*vectorizers)
 

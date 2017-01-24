@@ -49,7 +49,7 @@ class QSpider(BaseSpider, metaclass=abc.ABCMeta):
     """
     _ARGS = {
         'double', 'use_urls', 'use_full_urls', 'use_same_domain',
-        'use_pages', 'page_vectorizer_path',
+        'use_link_text', 'use_pages', 'page_vectorizer_path',
         'eps', 'balancing_temperature', 'gamma',
         'replay_sample_size', 'replay_maxsize', 'steps_before_switch',
         'checkpoint_path', 'checkpoint_interval',
@@ -68,6 +68,9 @@ class QSpider(BaseSpider, metaclass=abc.ABCMeta):
     # whether to use URL path/query or a full URL as a feature
     use_urls = 0
     use_full_urls = 0
+
+    # whether to use link text feature
+    use_link_text = 1
 
     # whether to use a 'link is to the same domain' feature
     use_same_domain = 1
@@ -131,6 +134,7 @@ class QSpider(BaseSpider, metaclass=abc.ABCMeta):
         self.use_urls = bool(int(self.use_urls))
         self.use_full_urls = bool(int(self.use_full_urls))
         self.use_same_domain = int(self.use_same_domain)
+        self.use_link_text = bool(int(self.use_link_text))
         self.double = int(self.double)
         self.stay_in_domain = bool(int(self.stay_in_domain))
         self.steps_before_switch = int(self.steps_before_switch)
@@ -151,6 +155,7 @@ class QSpider(BaseSpider, metaclass=abc.ABCMeta):
             use_url=bool(self.use_urls),
             use_full_url=bool(self.use_full_urls),
             use_same_domain=bool(self.use_same_domain),
+            use_link_text=bool(self.use_link_text),
         )
         if self.page_vectorizer_path:
             self.use_pages = True
