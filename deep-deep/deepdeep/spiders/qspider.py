@@ -166,6 +166,7 @@ class QSpider(BaseSpider, metaclass=abc.ABCMeta):
             self.page_vectorizer = PageVectorizer() if self.use_pages else None
 
         self.total_reward = 0
+        self.rewards = []
         self.steps_before_reschedule = 0
         self.goal = self.get_goal()
 
@@ -276,6 +277,7 @@ class QSpider(BaseSpider, metaclass=abc.ABCMeta):
             reward = self.goal.get_reward(response)
             self.update_node(response, {'reward': reward})
             self.total_reward += reward
+            self.rewards.append(reward)
             self.Q.add_experience(
                 as_t=as_t,
                 AS_t1=links_matrix,
@@ -472,6 +474,7 @@ class QSpider(BaseSpider, metaclass=abc.ABCMeta):
                 logging.debug(" {:0.4f} {:0.4f} {}".format(score1, score2, ex))
 
         average_reward = self.total_reward / self.Q.t_ if self.Q.t_ else 0
+        run_average_reward = np.mean(self.rewards[-100:]) if self.rewards else 0
         coef_norm_online = self.Q.coef_norm(online=True)
         coef_norm_target = self.Q.coef_norm(online=False)
         logging.debug(
@@ -486,6 +489,7 @@ class QSpider(BaseSpider, metaclass=abc.ABCMeta):
         self.goal.debug_print()
         self.log_value('Reward/total', self.total_reward)
         self.log_value('Reward/average', average_reward)
+        self.log_value('Reward/run-average', run_average_reward)
         self.log_value('Coef/norm_online', coef_norm_online)
         self.log_value('Coef/norm_target', coef_norm_target)
 
