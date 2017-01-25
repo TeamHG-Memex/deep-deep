@@ -17,6 +17,8 @@ def LinkVectorizer(use_url: bool=False,
                    use_full_url: bool=False,
                    use_same_domain: bool=True,
                    use_link_text: bool=True,
+                   use_page_url: bool=False,
+                   use_full_page_url: bool=False,
                    ):
     """
     Vectorizer for converting link dicts to feature vectors.
@@ -44,19 +46,28 @@ def LinkVectorizer(use_url: bool=False,
 
     if use_url or use_full_url:
         preprocessor = _clean_url if use_url else _clean_url_keep_domain
-        url_vec = HashingVectorizer(
-            preprocessor=preprocessor,
-            n_features=1024*1024,
-            binary=True,
-            analyzer='char',
-            ngram_range=(4, 5),
-        )
-        vectorizers.append(url_vec)
+        vectorizers.append(_url_vectorizer(preprocessor))
+
+    if use_page_url or use_full_page_url:
+        # It would be faster to run it only once per page
+        preprocessor = (
+            _clean_page_url if use_url else _clean_page_url_keep_domain)
+        vectorizers.append(_url_vectorizer(preprocessor))
 
     if not vectorizers:
         raise ValueError('Please enable at least one vectorizer')
 
     return make_union(*vectorizers)
+
+
+def _url_vectorizer(preprocessor):
+    return HashingVectorizer(
+        preprocessor=preprocessor,
+        n_features=1024*1024,
+        binary=True,
+        analyzer='char',
+        ngram_range=(4, 5),
+    )
 
 
 def PageVectorizer():
@@ -117,6 +128,14 @@ def _clean_url(link: Dict) -> str:
 
 def _clean_url_keep_domain(link: Dict) -> str:
     return canonicalize_url(link.get('url'))
+
+
+def _clean_page_url(link: Dict) -> str:
+    return url_path_query(_clean_page_url_keep_domain(link))
+
+
+def _clean_page_url_keep_domain(link: Dict) -> str:
+    return canonicalize_url(link.get('page_url'))
 
 
 def _same_domain_feature(links):

@@ -1,5 +1,5 @@
 from weakref import WeakKeyDictionary
-from typing import Any, Callable, Iterable, Tuple
+from typing import Any, Callable, Iterable, Dict, List, Tuple
 
 import autopager
 from scrapy import Request
@@ -57,7 +57,7 @@ class ExtractionSpider(QSpider):
     This spider learns how to extract data from a single domain.
     """
     name = 'extraction'
-    use_urls = 1
+    use_urls = True
     use_same_domain = 0  # not supported by eli5 yet, and we don't need it
     balancing_temperature = 5.0  # high to make all simultaneous runs equal
     # copied from relevancy spider

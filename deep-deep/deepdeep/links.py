@@ -111,6 +111,7 @@ def extract_link_dicts(
 
 def iter_response_link_dicts(response: TextResponse,
                              limit_by_domain: bool=True) -> Iterator[Dict]:
+    page_url = response.url
     domain_from = get_domain(response.url)
     base_url = get_base_url(response)
     for link in extract_link_dicts(response.selector, base_url):
@@ -118,6 +119,7 @@ def iter_response_link_dicts(response: TextResponse,
         if limit_by_domain and link['domain_to'] != domain_from:
             continue
         link['domain_from'] = domain_from
+        link['page_url'] = page_url
         yield link
 
 
