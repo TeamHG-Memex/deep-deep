@@ -1,6 +1,7 @@
 from weakref import WeakKeyDictionary
 from typing import Any, Callable, Iterable, Tuple
 
+import autopager
 from scrapy import Request
 from scrapy.dupefilters import RFPDupeFilter
 from scrapy.http.response.text import TextResponse
@@ -62,7 +63,7 @@ class ExtractionSpider(QSpider):
     # copied from relevancy spider
     replay_sample_size = 50
     replay_maxsize = 100000  # decrease it to ~10K if use_pages is 1
-
+    # number of simultaneous runs
     n_copies = 10
 
     _ARGS = {'n_copies'} | QSpider._ARGS
@@ -94,6 +95,31 @@ class ExtractionSpider(QSpider):
         run_id = response.request.meta['run_id']
         for req in super()._links_to_requests(response, *args, **kwargs):
             set_run_id(req, run_id)
+            yield req
+
+
+class AutopagerBaseline(ExtractionSpider):
+    """ A BFS + autopager baseline.
+    """
+    name = 'autopager_extraction'
+    baseline = True
+    eps = 0.0  # do not select requests at random
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.autopager = autopager.AutoPager()
+
+    def _links_to_requests(self, response, *args, **kwargs):
+        pagination_urls = set(self.autopager.urls(response))
+        depth = response.meta['depth']
+        for req in super()._links_to_requests(response, *args, **kwargs):
+            is_pagination = req.url in pagination_urls
+            multiplier = -100
+            if is_pagination:
+                req.meta['is_pagination'] = True
+                req.priority = multiplier * (depth - 1)
+            else:
+                req.priority = multiplier * depth
             yield req
 
 
