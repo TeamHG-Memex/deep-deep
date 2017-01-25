@@ -104,6 +104,12 @@ class AutopagerBaseline(ExtractionSpider):
     name = 'autopager_extraction'
     baseline = True
     eps = 0.0  # do not select requests at random
+    # disable depth middleware to avoid increasing depth for pagination urls
+    custom_settings = dict(ExtractionSpider.custom_settings)
+    custom_settings['SPIDER_MIDDLEWARES'] = dict(
+        custom_settings.get('SPIDER_MIDDLEWARES', {}))
+    custom_settings['SPIDER_MIDDLEWARES'][
+        'scrapy.spidermiddlewares.depth.DepthMiddleware'] = None
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -111,15 +117,16 @@ class AutopagerBaseline(ExtractionSpider):
 
     def _links_to_requests(self, response, *args, **kwargs):
         pagination_urls = set(self.autopager.urls(response))
-        depth = response.meta['depth']
+        depth = response.meta.get('depth', 1)
+        real_depth = response.meta.get('real_depth', 1)
+        # print(depth, real_depth, response.meta.get('is_pagination'),
+        #      response.request.priority, response.url)
         for req in super()._links_to_requests(response, *args, **kwargs):
             is_pagination = req.url in pagination_urls
-            multiplier = -100
-            if is_pagination:
-                req.meta['is_pagination'] = True
-                req.priority = multiplier * (depth - 1)
-            else:
-                req.priority = multiplier * depth
+            req.meta['depth'] = depth + (1 - is_pagination)
+            req.meta['real_depth'] = real_depth + 1
+            req.meta['is_pagination'] = is_pagination
+            req.priority = -100 * req.meta['depth']
             yield req
 
 
