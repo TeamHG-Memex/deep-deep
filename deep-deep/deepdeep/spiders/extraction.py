@@ -1,5 +1,6 @@
 import importlib
 from weakref import WeakKeyDictionary
+import traceback
 from typing import Any, Callable, Iterable, Dict, List, Tuple
 
 import autopager
@@ -31,11 +32,16 @@ class ExtractionGoal(BaseGoal):
         if response not in self._cache:
             score = self.request_reward
             run_id = response.meta['run_id']
-            for _key, _ in self.extractor(response):
-                key = (run_id, _key)
-                if key not in self.extracted_items:
-                    self.extracted_items.add(key)
-                    score += self.item_reward
+            try:
+                items = list(self.extractor(response))
+            except Exception:
+                traceback.print_exc()
+            else:
+                for _key, _ in items:
+                    key = (run_id, _key)
+                    if key not in self.extracted_items:
+                        self.extracted_items.add(key)
+                        score += self.item_reward
             self._cache[response] = score
         return self._cache[response]
 
