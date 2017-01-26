@@ -1,3 +1,4 @@
+import importlib
 from weakref import WeakKeyDictionary
 from typing import Any, Callable, Iterable, Dict, List, Tuple
 
@@ -15,6 +16,11 @@ class ExtractionGoal(BaseGoal):
                  extractor: Callable[[TextResponse], Iterable[Tuple[Any, Any]]],
                  request_penalty: float=1.0,
                  ) -> None:
+        """ A goal is to find maximum number of unique items by doing
+        minimum number of requests.
+        extractor should be a function that extracts key-value pairs
+        for each item found in response.
+        """
         self.extractor = extractor
         self.extracted_items = set()
         self.request_reward = -request_penalty
@@ -37,21 +43,6 @@ class ExtractionGoal(BaseGoal):
         pass
 
 
-def example_forum_extractor(response: TextResponse) -> Iterable[Any]:
-    if not hasattr(response, 'xpath'):
-        return
-    thread_links = response.xpath('//a[starts-with(@id, "tid-link-")]')
-    for link in thread_links:
-        # FIXME - there must be a better way to do it
-        thread_id = link.xpath('@id')[0].extract()
-        thread_name = link.xpath('text()')[0].extract()
-        yield ('thread', thread_id), thread_name
-    posts = response.xpath('//td[starts-with(@id, "post-main-")]')
-    for post in posts:
-        post_id = post.xpath('@id')[0].extract()
-        yield ('post', post_id), None
-
-
 class ExtractionSpider(QSpider):
     """
     This spider learns how to extract data from a single domain.
@@ -66,23 +57,33 @@ class ExtractionSpider(QSpider):
     # number of simultaneous runs
     n_copies = 10
 
-    _ARGS = {'n_copies'} | QSpider._ARGS
+    _ARGS = {'extractor', 'n_copies'} | QSpider._ARGS
     ALLOWED_ARGUMENTS = _ARGS | QSpider.ALLOWED_ARGUMENTS
-
-    def get_goal(self):
-        return ExtractionGoal(example_forum_extractor)
-
-    # _parse_seeds and _links_to_requests are override to allow
-    # running several simultaneous independent spiders on the same domain
-    # which still share the model, so it is more general.
 
     custom_settings = dict(
         DUPEFILTER_CLASS='deepdeep.spiders.extraction.RunAwareDupeFilter',
         **QSpider.custom_settings)
 
-    def __init__(self, *args, **kwargs) -> None:
+    def __init__(self, *args, **kwargs):
+        """ extractor argument has a "module:function" format
+        and specifies where to load the extractor from.
+        """
+        try:
+            ex_module, ex_function = kwargs.pop('extractor').split(':')
+        except (KeyError, ValueError):
+            raise ValueError(
+                'Please give extractor argument in "module:function" format')
+        ex_module = importlib.import_module(ex_module)
+        self.extractor = getattr(ex_module, ex_function)
         super().__init__(*args, **kwargs)
         self.n_copies = int(self.n_copies)
+
+    def get_goal(self):
+        return ExtractionGoal(self.extractor)
+
+    # _parse_seeds and _links_to_requests are override to allow
+    # running several simultaneous independent spiders on the same domain
+    # which still share the model, so it is more general.
 
     def _parse_seeds(self, response):
         for orig_req in super()._parse_seeds(response):
