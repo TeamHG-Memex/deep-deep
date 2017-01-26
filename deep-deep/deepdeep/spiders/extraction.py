@@ -74,18 +74,19 @@ class ExtractionSpider(QSpider):
         """ extractor argument has a "module:function" format
         and specifies where to load the extractor from.
         """
+        super().__init__(*args, **kwargs)
+        self.n_copies = int(self.n_copies)
+        self.extractor = str(self.extractor)
+
+    def get_goal(self):
         try:
-            ex_module, ex_function = kwargs.pop('extractor').split(':')
+            ex_module, ex_function = self.extractor.split(':')
         except (KeyError, ValueError):
             raise ValueError(
                 'Please give extractor argument in "module:function" format')
         ex_module = importlib.import_module(ex_module)
-        self.extractor = getattr(ex_module, ex_function)
-        super().__init__(*args, **kwargs)
-        self.n_copies = int(self.n_copies)
-
-    def get_goal(self):
-        return ExtractionGoal(self.extractor)
+        extractor_fn = getattr(ex_module, ex_function)
+        return ExtractionGoal(extractor_fn)
 
     # _parse_seeds and _links_to_requests are override to allow
     # running several simultaneous independent spiders on the same domain
