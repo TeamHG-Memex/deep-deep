@@ -178,12 +178,12 @@ class QLearner:
         self.dummy = dummy
 
         self.clf_online = SGDRegressor(
-            penalty='l2',
+            penalty='l1',
             average=False,
             n_iter=1,
             learning_rate='constant',
             # loss='epsilon_insensitive',
-            alpha=1e-6,
+            # alpha=1e-6,
             eta0=0.1,
         )
 
