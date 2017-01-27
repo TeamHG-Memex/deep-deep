@@ -63,7 +63,7 @@ class ExtractionSpider(QSpider):
     # number of simultaneous runs
     n_copies = 10
 
-    _ARGS = {'extractor', 'n_copies'} | QSpider._ARGS
+    _ARGS = {'extractor', 'n_copies', 'seed_url'} | QSpider._ARGS
     ALLOWED_ARGUMENTS = _ARGS | QSpider.ALLOWED_ARGUMENTS
 
     custom_settings = dict(
@@ -77,6 +77,7 @@ class ExtractionSpider(QSpider):
         super().__init__(*args, **kwargs)
         self.n_copies = int(self.n_copies)
         self.extractor = str(self.extractor)
+        self.seed_url = self.seed_url
 
     def get_goal(self):
         try:
@@ -88,12 +89,19 @@ class ExtractionSpider(QSpider):
         extractor_fn = getattr(ex_module, ex_function)
         return ExtractionGoal(extractor_fn)
 
-    # _parse_seeds and _links_to_requests are override to allow
-    # running several simultaneous independent spiders on the same domain
+    def start_requests(self):
+        if self.seeds_url is None:
+            if self.seed_url is None:
+                raise ValueError('Pass seeds_url or seed_url')
+            yield from self._start_requests([self.seed_url])
+        else:
+            yield from super().start_requests()
+
+    # Allow running several simultaneous independent spiders on the same domain
     # which still share the model, so it is more general.
 
-    def _parse_seeds(self, response):
-        for orig_req in super()._parse_seeds(response):
+    def _start_requests(self, urls):
+        for orig_req in super()._start_requests(urls):
             for idx in range(self.n_copies):
                 req = orig_req.copy()
                 set_run_id(req, 'run-{}'.format(idx))
