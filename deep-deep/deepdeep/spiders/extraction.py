@@ -1,7 +1,7 @@
 import importlib
-from weakref import WeakKeyDictionary
 import traceback
-from typing import Any, Callable, Iterable, Dict, List, Tuple
+from typing import Any, Callable, Iterable, Tuple
+from weakref import WeakKeyDictionary
 
 import autopager
 from scrapy import Request
@@ -16,6 +16,7 @@ class ExtractionGoal(BaseGoal):
     def __init__(self,
                  extractor: Callable[[TextResponse], Iterable[Tuple[Any, Any]]],
                  request_penalty: float=1.0,
+                 item_callback=None,
                  ) -> None:
         """ A goal is to find maximum number of unique items by doing
         minimum number of requests.
@@ -26,6 +27,7 @@ class ExtractionGoal(BaseGoal):
         self.extracted_items = set()
         self.request_reward = -request_penalty
         self.item_reward = 1.0
+        self.item_callback = item_callback
         self._cache = WeakKeyDictionary()  # type: WeakKeyDictionary
 
     def get_reward(self, response: TextResponse) -> float:
@@ -37,11 +39,13 @@ class ExtractionGoal(BaseGoal):
             except Exception:
                 traceback.print_exc()
             else:
-                for _key, _ in items:
-                    key = (run_id, _key)
-                    if key not in self.extracted_items:
-                        self.extracted_items.add(key)
+                for key, item in items:
+                    full_key = (run_id, key)
+                    if full_key not in self.extracted_items:
+                        self.extracted_items.add(full_key)
                         score += self.item_reward
+                    if self.item_callback:
+                        self.item_callback(response.url, key, item)
             self._cache[response] = score
         return self._cache[response]
 
@@ -55,15 +59,20 @@ class ExtractionSpider(QSpider):
     """
     name = 'extraction'
     use_urls = True
+    use_link_text = 1
+    use_page_urls = 1
     use_same_domain = 0  # not supported by eli5 yet, and we don't need it
     balancing_temperature = 5.0  # high to make all simultaneous runs equal
+    export_items = 1
+    export_cdr = 0
+    seed_url = None
     # copied from relevancy spider
     replay_sample_size = 50
     replay_maxsize = 100000  # decrease it to ~10K if use_pages is 1
     # number of simultaneous runs
     n_copies = 10
 
-    _ARGS = {'extractor', 'n_copies', 'seed_url'} | QSpider._ARGS
+    _ARGS = {'extractor', 'n_copies', 'seed_url', 'export_items'} | QSpider._ARGS
     ALLOWED_ARGUMENTS = _ARGS | QSpider.ALLOWED_ARGUMENTS
 
     custom_settings = dict(
@@ -78,16 +87,35 @@ class ExtractionSpider(QSpider):
         self.n_copies = int(self.n_copies)
         self.extractor = str(self.extractor)
         self.seed_url = self.seed_url
+        self.export_items = bool(int(self.export_items))
+        self.exported_keys = set()
+        self.export_buffer = []
 
     def get_goal(self):
         try:
             ex_module, ex_function = self.extractor.split(':')
-        except (KeyError, ValueError):
+        except (AttributeError, ValueError):
             raise ValueError(
                 'Please give extractor argument in "module:function" format')
         ex_module = importlib.import_module(ex_module)
         extractor_fn = getattr(ex_module, ex_function)
-        return ExtractionGoal(extractor_fn)
+        return ExtractionGoal(extractor_fn, item_callback=self.item_callback)
+
+    def item_callback(self, url, key, item):
+        if self.export_items and key not in self.exported_keys:
+            self.export_buffer.append({'url': url, 'key': key, 'item': item})
+            self.exported_keys.add(key)
+
+    def parse(self, response):
+        parse_result = super().parse(response)
+        if self.export_items:
+            yield from self.export_buffer
+            self.export_buffer = []
+            for item_or_link in parse_result:
+                if isinstance(item_or_link, Request):
+                    yield item_or_link
+        else:
+            yield from parse_result
 
     def start_requests(self):
         if self.seeds_url is None:
