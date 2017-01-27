@@ -52,24 +52,18 @@ def extract_username(response: TextResponse):
         yield username, None
 
 
-def make_script(top):
+def make_script(experiment_root, top):
     print('set -v')
-    for pattern, _, _, _ in islice(_rules_reader(RULES_PATH), top):
-        parsed = urlsplit(pattern)
-        seed_url = '{}://{}'.format(parsed.scheme, parsed.netloc)
-        parent = Path('profiles') / get_domain(seed_url)
-        i = 1
-        while True:
-            root = parent / str(i)
-            if not root.exists():
-                root.mkdir(parents=True)
-                break
-            elif not any(root.iterdir()):
-                break
-            i += 1
+    for pattern, username, _, _ in islice(_rules_reader(RULES_PATH), top):
+        seed_url = pattern % username
+        root = Path(experiment_root) / get_domain(seed_url)
+        if root.exists():
+            assert not any(root.iterdir())
+        else:
+            root.mkdir(parents=True)
         print(
             'scrapy crawl extraction -a extractor=profiles:extract_username '
-            '-a seed_url={seed_url} '
+            "-a seed_url='{seed_url}' "
             '-a checkpoint_path={root} '
             '-s LOG_LEVEL=INFO -s LOG_FILE={root}/spider.log '
             '-o {root}/items.jl &'
@@ -77,4 +71,4 @@ def make_script(top):
 
 
 if __name__ == '__main__':
-    make_script(top=16)
+    make_script('profiles/user-seeds', top=16)
