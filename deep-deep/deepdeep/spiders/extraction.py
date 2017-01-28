@@ -70,7 +70,7 @@ class ExtractionSpider(QSpider):
     replay_sample_size = 50
     replay_maxsize = 100000  # decrease it to ~10K if use_pages is 1
     # number of simultaneous runs
-    n_copies = 10
+    n_copies = 1
 
     _ARGS = {'extractor', 'n_copies', 'seed_url', 'export_items'} | QSpider._ARGS
     ALLOWED_ARGUMENTS = _ARGS | QSpider.ALLOWED_ARGUMENTS
