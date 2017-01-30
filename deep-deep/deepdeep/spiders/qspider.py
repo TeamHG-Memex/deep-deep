@@ -577,6 +577,12 @@ class QSpider(BaseSpider, metaclass=abc.ABCMeta):
         # self.dump_policy(path/("Q-latest.joblib"), True)
         self.dump_crawl_graph(path/"graph.pickle")
         self.dump_queue(path/("queue-%s.csv.gz" % self.Q.t_))
+        queue = self.scheduler.queue
+        self.logger.info(
+            'Queue entries {:,}, vectors bytes {:,}; '
+            'Replay entries {:,}, vectors bytes {:,}'
+            .format(len(queue), queue.nbytes(),
+                    len(self.Q.memory), self.Q.memory.nbytes()))
 
     @log_time
     def dump_crawl_graph(self, path) -> None:

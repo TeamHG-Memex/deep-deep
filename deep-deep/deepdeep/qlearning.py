@@ -81,7 +81,7 @@ from scipy import sparse
 import sklearn.base
 from sklearn.linear_model import SGDRegressor
 
-from deepdeep.utils import log_time
+from deepdeep.utils import log_time, csr_nbytes
 
 
 class QLearner:
@@ -422,3 +422,10 @@ class ExperienceMemory:
 
     def __len__(self) -> int:
         return len(self.data)
+
+    def nbytes(self) -> int:
+        """
+        Memory taken by sparse matrices in self.data.
+        """
+        return sum(csr_nbytes(as_t) + csr_nbytes(AS_t1)
+                   for as_t, AS_t1, _ in self.data)

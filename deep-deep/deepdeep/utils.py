@@ -12,6 +12,7 @@ import zlib
 import numpy as np
 import parsel
 import lxml.html
+from scipy.sparse.csr import csr_matrix
 import tldextract
 from lxml import etree  # type: ignore
 from lxml.html.clean import Cleaner  # type: ignore
@@ -234,3 +235,10 @@ def iter_jsonlines(path):
         except (EOFError, zlib.error):
             logging.warning("Error found: tuncated archive.")
             return
+
+
+def csr_nbytes(m: csr_matrix) -> int:
+    if m is not None:
+        return m.data.nbytes + m.indices.nbytes + m.indptr.nbytes
+    else:
+        return 0

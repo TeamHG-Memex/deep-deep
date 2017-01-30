@@ -28,7 +28,7 @@ from typing import (
 
 import numpy as np
 import scrapy
-from deepdeep.utils import softmax, log_time
+from deepdeep.utils import softmax, log_time, csr_nbytes
 
 
 FLOAT_PRIORITY_MULTIPLIER = 10000
@@ -182,6 +182,12 @@ class RequestsPriorityQueue(Sized):
 
     def __len__(self) -> int:
         return len(self.entries)
+
+    def nbytes(self) -> int:
+        """
+        Memory taken by link vectors in requests stored in self.entries.
+        """
+        return sum(request_nbytes(request) for _, _, request in self.entries)
 
 
 class BalancedPriorityQueue:
@@ -338,3 +344,18 @@ class BalancedPriorityQueue:
 
     def __len__(self) -> int:
         return sum(len(q) for q in self.queues.values()) + len(self._buffer)
+
+    def nbytes(self) -> int:
+        """
+        Memory taken by link vectors in requests stored in all queues
+        and self.buffer.
+        """
+        return (sum(q.nbytes() for q in self.queues.values()) +
+                sum(map(request_nbytes, self._buffer)))
+
+
+def request_nbytes(request):
+    if hasattr(request, 'meta'):
+        return csr_nbytes(request.meta.get('link_vector'))
+    else:
+        return 0
