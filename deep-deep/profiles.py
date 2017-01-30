@@ -37,7 +37,7 @@ def extract_username(response: TextResponse):
     rule = RULES.get(domain)
     if not rule:
         return
-    pattern = rule['url_pattern'].replace('%s', '([^/]+)').rstrip('/')
+    pattern = rule['url_pattern'].replace('%s', '([^/?]+)').rstrip('/')
     match = re.match(pattern, url)
     if match:
         username = match.groups()[0]
