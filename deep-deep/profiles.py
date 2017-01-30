@@ -52,7 +52,7 @@ def extract_username(response: TextResponse):
         yield username, None
 
 
-def make_script(experiment_root: Path, top: int):
+def make_script(experiment_root: Path, top: int, use_page_urls: bool=True):
     print('set -v')
     for pattern, username, _, _ in islice(_rules_reader(RULES_PATH), top):
         parsed = urlsplit(pattern)
@@ -70,9 +70,15 @@ def make_script(experiment_root: Path, top: int):
             'scrapy crawl extraction -a extractor=profiles:extract_username '
             "-a seeds_url='{seeds_url}' "
             '-a checkpoint_path={root} '
+            '-a use_page_urls={use_page_urls} '
             '-s LOG_LEVEL=INFO -s LOG_FILE={root}/spider.log '
-            '-o {root}/items.jl &'
-            .format(seeds_url=seeds_path.absolute(), root=root))
+            '-s CLOSESPIDER_ITEMCOUNT=0 '  # no limit
+            '-o {root}/{domain}.jl &'
+            .format(seeds_url=seeds_path.absolute(),
+                    domain=domain,
+                    root=root,
+                    use_page_urls=int(use_page_urls),
+                    ))
 
 
 if __name__ == '__main__':
