@@ -66,9 +66,8 @@ class ExtractionSpider(QSpider):
     export_items = 1
     export_cdr = 0
     seed_url = None
-    # copied from relevancy spider
     replay_sample_size = 50
-    replay_maxsize = 100000  # decrease it to ~10K if use_pages is 1
+    replay_maxsize = 10000  # one site should need lower replay
     # number of simultaneous runs
     n_copies = 1
 
