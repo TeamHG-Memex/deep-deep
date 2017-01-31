@@ -280,6 +280,8 @@ class QSpider(BaseSpider, metaclass=abc.ABCMeta):
         links = self._extract_links(response)
         links_matrix = self.link_vectorizer.transform(links) if links else None
         links_matrix = self.Q.join_As(links_matrix, page_vector)
+        if links_matrix is not None:
+            links_matrix = links_matrix.astype(np.float32)  # saving memory
 
         reward = 0
         if not self.is_seed(response):
@@ -577,6 +579,8 @@ class QSpider(BaseSpider, metaclass=abc.ABCMeta):
         # self.dump_policy(path/("Q-latest.joblib"), True)
         self.dump_crawl_graph(path/"graph.pickle")
         self.dump_queue(path/("queue-%s.csv.gz" % self.Q.t_))
+        # Logging queue memory stats only on checkpoints because we need
+        # to do a linear scan over all queues, which can be slow.
         queue = self.scheduler.queue
         self.logger.info(
             'Queue entries {:,}, vectors bytes {:,}; '
