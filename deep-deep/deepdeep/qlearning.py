@@ -153,6 +153,9 @@ class QLearner:
     er_maxsize: int, optional
         Max size of experience replay memory. None (default) means there
         is no limit.
+    er_maxlinks: int, optional
+        Max number of links in experience replay memory.
+        None (default) means there is no limit.
     """
     def __init__(self, *,
                  double_learning: bool = True,
@@ -164,7 +167,8 @@ class QLearner:
                  on_model_changed: Optional[Callable[[], None]]=None,
                  pickle_memory: bool = True,
                  dummy: bool = False,
-                 er_maxsize: Optional[int] = None
+                 er_maxsize: Optional[int] = None,
+                 er_maxlinks: Optional[int] = None
                  ) -> None:
         assert 0 <= gamma < 1
         self.double_learning = double_learning
@@ -188,7 +192,7 @@ class QLearner:
         )
 
         self.clf_target = sklearn.base.clone(self.clf_online)  # type: SGDRegressor
-        self.memory = ExperienceMemory(maxsize=er_maxsize)
+        self.memory = ExperienceMemory(maxsize=er_maxsize, maxlinks=er_maxlinks)
         self.t_ = 0
 
     @classmethod
@@ -388,10 +392,21 @@ class ExperienceMemory:
 
         Ring buffer would have been more aggressive pruning old observations;
         average age would have been ``maxsize/2`` with a ring buffer.
+
+    maxlinks : int, optional
+        Has the same logic as maxsize, but controls maximum number of links:
+        each observation can contain multiple links. This is useful to
+        control in case of running separate spiders for each domain,
+        as different domains have different average number of links.
     """
-    def __init__(self, maxsize: Optional[int]=None) -> None:
+    def __init__(self,
+                 maxsize: Optional[int]=None,
+                 maxlinks: Optional[int]=None,
+                 ) -> None:
         self.data = []  # type: List[Tuple[Any, Any, Any]]
         self.maxsize = maxsize
+        self.maxlinks = maxlinks
+        self._n_links = 0
 
     def add(self, as_t, AS_t1, r_t1) -> None:
         """
@@ -403,10 +418,19 @@ class ExperienceMemory:
         # TODO: In AS matrix rows of S columns usually contains the same data;
         # delta-compress them?
         item = (as_t, AS_t1, r_t1)
-        if self.maxsize is None or len(self.data) < self.maxsize:
+        too_large = False
+        if self.maxsize and len(self.data) >= self.maxsize:
+            too_large = True
+        elif self.maxlinks and self._n_links >= self.maxlinks:
+            too_large = True
+        self._n_links += AS_t1.shape[0] if AS_t1 is not None else 0
+        if not too_large:
             self.data.append(item)
         else:
             idx = random.randint(0, len(self.data)-1)
+            removed = self.data[idx]
+            if removed[1] is not None:
+                self._n_links -= removed[1].shape[0]
             self.data[idx] = item
 
     def sample(self, k: int) -> List[Tuple[Any, Any, Any]]:
@@ -419,6 +443,7 @@ class ExperienceMemory:
 
     def clear(self) -> None:
         self.data.clear()
+        self._n_links = 0
 
     def __len__(self) -> int:
         return len(self.data)

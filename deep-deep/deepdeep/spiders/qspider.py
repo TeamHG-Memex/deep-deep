@@ -52,8 +52,8 @@ class QSpider(BaseSpider, metaclass=abc.ABCMeta):
         'use_link_text', 'use_page_urls', 'use_full_page_urls',
         'use_pages', 'page_vectorizer_path',
         'eps', 'balancing_temperature', 'gamma',
-        'replay_sample_size', 'replay_maxsize', 'steps_before_switch',
-        'checkpoint_path', 'checkpoint_interval',
+        'replay_sample_size', 'replay_maxsize', 'replay_maxlinks',
+        'steps_before_switch', 'checkpoint_path', 'checkpoint_interval',
         'baseline', 'export_cdr',
     }
     ALLOWED_ARGUMENTS = _ARGS | BaseSpider.ALLOWED_ARGUMENTS
@@ -114,6 +114,9 @@ class QSpider(BaseSpider, metaclass=abc.ABCMeta):
     # With use_full_url=1 and use_pages=0 a single observation uses
     # about 10Kb on average.
     replay_maxsize = 100000
+    # Maximum number of links: useful to limit when running separate spiders
+    # for each domain. No limit by default.
+    replay_maxlinks = 0
 
     # current model is saved every checkpoint_interval timesteps
     checkpoint_interval = 1000
@@ -147,6 +150,7 @@ class QSpider(BaseSpider, metaclass=abc.ABCMeta):
         self.steps_before_switch = int(self.steps_before_switch)
         self.replay_sample_size = int(self.replay_sample_size)
         self.replay_maxsize = int(self.replay_maxsize)
+        self.replay_maxlinks = int(self.replay_maxlinks)
         self.baseline = bool(int(self.baseline))
         self.Q = QLearner(
             steps_before_switch=self.steps_before_switch,
@@ -157,6 +161,7 @@ class QSpider(BaseSpider, metaclass=abc.ABCMeta):
             pickle_memory=False,
             dummy=self.baseline,
             er_maxsize=self.replay_maxsize,
+            er_maxlinks=self.replay_maxlinks,
         )
         self.link_vectorizer = LinkVectorizer(
             use_url=bool(self.use_urls),

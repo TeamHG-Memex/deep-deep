@@ -67,7 +67,8 @@ class ExtractionSpider(QSpider):
     export_cdr = 0
     seed_url = None
     replay_sample_size = 50
-    replay_maxsize = 5000  # one site needs lower replay, even 2.5k seem ok
+    replay_maxsize = 5000  # single site needs lower replay
+    replay_maxlinks = 500000  # some sites can have lots of links per page
     # number of simultaneous runs
     n_copies = 1
 
