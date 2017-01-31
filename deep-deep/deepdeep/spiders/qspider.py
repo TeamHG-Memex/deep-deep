@@ -200,7 +200,7 @@ class QSpider(BaseSpider, metaclass=abc.ABCMeta):
             self._tensortboard_logger = None
 
     def log_value(self, name, value):
-        if self._tensortboard_logger:
+        if self._tensortboard_logger and self.Q.t_ % 20 == 0:
             self._tensortboard_logger.log_value(name, value, step=self.Q.t_)
 
     @abc.abstractmethod
