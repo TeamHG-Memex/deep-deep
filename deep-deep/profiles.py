@@ -81,5 +81,35 @@ def make_script(experiment_root: Path, top: int, use_page_urls: bool=True):
                     ))
 
 
+def merge_profiles():
+    # FIXME - copied from ipython
+    import json, csv, gzip
+    from deepdeep.utils import get_domain
+    from collections import defaultdict
+
+    with open('all_items.jl') as f:
+        all_items = []
+        invalid = 0
+        for line in f:
+            try:
+                all_items.append(json.loads(line))
+            except Exception:
+                invalid += 1
+        print(invalid, 'invalid')
+
+    with gzip.open('crawled_profiles.csv.gz', 'wt') as outf:
+        writer = csv.writer(outf)
+        by_domain = defaultdict(set)
+        for item in all_items:
+            url = item['url']
+            # split by ? fixed a bug that is also fixed in extract_username
+            name = item['key'].split('?')[0]
+            domain = get_domain(url)
+            if name in by_domain[domain]:
+                continue
+            by_domain[domain].add(name)
+            writer.writerow([url, name])
+
+
 if __name__ == '__main__':
     make_script(Path('profiles/user-root-seeds'), top=16)
