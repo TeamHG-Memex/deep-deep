@@ -93,7 +93,7 @@ class BaseSpider(scrapy.Spider):
         self.response_count += 1
         max_items = self.crawler.settings.getint('CLOSESPIDER_ITEMCOUNT',
                                                  float('inf'))
-        if self.response_count >= max_items:
+        if max_items != 0 and self.response_count >= max_items:
             raise CloseSpider("item_count")
 
     def on_offdomain_request_dropped(self, request):
