@@ -53,6 +53,7 @@ class QSpider(BaseSpider, metaclass=abc.ABCMeta):
         'use_pages', 'page_vectorizer_path',
         'eps', 'balancing_temperature', 'gamma',
         'replay_sample_size', 'replay_maxsize', 'replay_maxlinks',
+        'domain_queue_maxsize',
         'steps_before_switch', 'checkpoint_path', 'checkpoint_interval',
         'baseline', 'export_cdr',
     }
@@ -114,9 +115,12 @@ class QSpider(BaseSpider, metaclass=abc.ABCMeta):
     # With use_full_url=1 and use_pages=0 a single observation uses
     # about 10Kb on average.
     replay_maxsize = 100000
+
     # Maximum number of links: useful to limit when running separate spiders
     # for each domain. No limit by default.
     replay_maxlinks = 0
+
+    domain_queue_maxsize = 0  # no limit by default
 
     # current model is saved every checkpoint_interval timesteps
     checkpoint_interval = 1000
@@ -151,6 +155,7 @@ class QSpider(BaseSpider, metaclass=abc.ABCMeta):
         self.replay_sample_size = int(self.replay_sample_size)
         self.replay_maxsize = int(self.replay_maxsize)
         self.replay_maxlinks = int(self.replay_maxlinks)
+        self.domain_queue_maxsize = int(self.domain_queue_maxsize)
         self.baseline = bool(int(self.baseline))
         self.Q = QLearner(
             steps_before_switch=self.steps_before_switch,
@@ -356,7 +361,8 @@ class QSpider(BaseSpider, metaclass=abc.ABCMeta):
         to create a new queue.
         """
         def new_queue(domain):
-            return RequestsPriorityQueue(fifo=True)
+            return RequestsPriorityQueue(fifo=True,
+                                         maxsize=self.domain_queue_maxsize)
         return BalancedPriorityQueue(
             queue_factory=new_queue,
             eps=self.eps,
