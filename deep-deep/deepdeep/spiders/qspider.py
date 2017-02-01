@@ -438,6 +438,8 @@ class QSpider(BaseSpider, metaclass=abc.ABCMeta):
         #
         domain_scores_old = np.array([p.max() if p.size else 0 for p in scores_old])
         domain_scores_new = np.array([p.max() if p.size else 0 for p in scores_new])
+        if len(scores_new) == 0:
+            return 0
         scores_old_all = np.hstack(scores_old)
         scores_new_all = np.hstack(scores_new)
 
