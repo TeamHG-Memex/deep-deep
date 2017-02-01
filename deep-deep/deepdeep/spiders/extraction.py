@@ -108,6 +108,7 @@ class ExtractionSpider(QSpider):
 
     def parse(self, response):
         parse_result = super().parse(response)
+        self.log_value('Reward/total-items', len(self.exported_keys))
         if self.export_items:
             yield from self.export_buffer
             self.export_buffer = []
