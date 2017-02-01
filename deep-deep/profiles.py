@@ -50,7 +50,7 @@ def extract_username(response: TextResponse):
                 return
         else:
             raise ValueError('Unexpected rule: no css or xpath set')
-        yield username, None
+        yield username, {'html': response.text}
 
 
 def merge_profiles():
