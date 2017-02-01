@@ -242,3 +242,8 @@ def csr_nbytes(m: csr_matrix) -> int:
         return m.data.nbytes + m.indices.nbytes + m.indptr.nbytes
     else:
         return 0
+
+
+def chunks(lst, chunk_size: int):
+    for idx in range(0, len(lst), chunk_size):
+        yield lst[idx: idx + chunk_size]

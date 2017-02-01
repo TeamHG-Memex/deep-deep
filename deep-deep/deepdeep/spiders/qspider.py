@@ -26,9 +26,8 @@ from deepdeep.queues import (
     priority_to_score, FLOAT_PRIORITY_MULTIPLIER)
 from deepdeep.scheduler import Scheduler
 from deepdeep.spiders._base import BaseSpider
-from deepdeep.utils import set_request_domain, get_domain
 from deepdeep.qlearning import QLearner
-from deepdeep.utils import log_time
+from deepdeep.utils import set_request_domain, get_domain, log_time, chunks
 from deepdeep.vectorizers import LinkVectorizer, PageVectorizer
 from deepdeep.goals import BaseGoal
 from deepdeep.metrics import ndcg_score
@@ -407,7 +406,8 @@ class QSpider(BaseSpider, metaclass=abc.ABCMeta):
                 vectors.append(request.meta['link_vector'])
                 indices.append(idx)
             if vectors:
-                scores = self.Q.predict(sp.vstack(vectors))
+                scores = np.concatenate([self.Q.predict(sp.vstack(batch))
+                                         for batch in chunks(vectors, 4096)])
                 priorities[indices] = scores * FLOAT_PRIORITY_MULTIPLIER
 
             # keep scores in order to compute metrics later
