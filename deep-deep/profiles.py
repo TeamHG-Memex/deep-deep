@@ -106,7 +106,7 @@ def make_script(experiment_root: Path, limit: int, offset: int,
             '-a use_page_urls={use_page_urls} '
             '-s LOG_LEVEL=INFO -s LOG_FILE={root}/spider.log '
             '-s CLOSESPIDER_ITEMCOUNT=0 '  # no limit
-            '-o {root}/{domain}.jl &'
+            '-o gzip:{root}/{domain}.jl &'
             .format(seeds_url=seeds_path.absolute(),
                     domain=domain,
                     root=root,
