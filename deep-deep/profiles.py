@@ -104,6 +104,7 @@ def make_script(experiment_root: Path, limit: int, offset: int,
             "-a seeds_url='{seeds_url}' "
             '-a checkpoint_path={root} '
             '-a use_page_urls={use_page_urls} '
+            '-a checkpoint_latest=1 '
             '-s LOG_LEVEL=INFO -s LOG_FILE={root}/spider.log '
             '-s CLOSESPIDER_ITEMCOUNT=0 '  # no limit
             '-o gzip:{root}/{domain}.jl &'

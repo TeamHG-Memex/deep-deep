@@ -52,8 +52,8 @@ class QSpider(BaseSpider, metaclass=abc.ABCMeta):
         'use_pages', 'page_vectorizer_path',
         'eps', 'balancing_temperature', 'gamma',
         'replay_sample_size', 'replay_maxsize', 'replay_maxlinks',
-        'domain_queue_maxsize',
-        'steps_before_switch', 'checkpoint_path', 'checkpoint_interval',
+        'domain_queue_maxsize', 'steps_before_switch',
+        'checkpoint_path', 'checkpoint_interval', 'checkpoint_latest',
         'baseline', 'export_cdr',
     }
     ALLOWED_ARGUMENTS = _ARGS | BaseSpider.ALLOWED_ARGUMENTS
@@ -127,6 +127,9 @@ class QSpider(BaseSpider, metaclass=abc.ABCMeta):
     # Where to store checkpoints. By default they are not stored.
     checkpoint_path = None  # type: Optional[str]
 
+    # Store only latest checkpoint to save disk space.
+    checkpoint_latest = 0
+
     # Is spider allowed to follow out-of-domain links?
     # XXX: it is not enough to set this to False; a middleware should be also
     # turned off.
@@ -192,6 +195,7 @@ class QSpider(BaseSpider, metaclass=abc.ABCMeta):
         self.relevant_domains = set()  # type: Set[str]
 
         self.checkpoint_interval = int(self.checkpoint_interval)
+        self.checkpoint_latest = bool(int(self.checkpoint_latest))
         self._save_params_json()
         self._setup_tensorboard_logger()
 
@@ -588,10 +592,10 @@ class QSpider(BaseSpider, metaclass=abc.ABCMeta):
         if not self.checkpoint_path:
             return
         path = Path(self.checkpoint_path)
-        self.dump_policy(path/("Q-%s.joblib" % self.Q.t_), False)
-        # self.dump_policy(path/("Q-latest.joblib"), True)
+        id_ = 'latest' if self.checkpoint_latest else self.Q.t_
+        self.dump_policy(path/("Q-%s.joblib" % id_), False)
         self.dump_crawl_graph(path/"graph.pickle")
-        self.dump_queue(path/("queue-%s.csv.gz" % self.Q.t_))
+        self.dump_queue(path/("queue-%s.csv.gz" % id_))
         # Logging queue memory stats only on checkpoints because we need
         # to do a linear scan over all queues, which can be slow.
         queue = self.scheduler.queue
