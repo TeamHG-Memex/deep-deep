@@ -105,7 +105,8 @@ def check_sites(sites=None):
             traceback.print_exc()
             request_failed.append(site)
         else:
-            response = TextResponse(url=url, body=r.content, headers=dict(r.headers))
+            response = TextResponse(
+                url=url, body=r.content, headers=dict(r.headers))
             usernames = list(extract_username(response))
             if usernames:
                 print('valid')
@@ -166,22 +167,25 @@ def download_sites(api_url, username, password) -> List[Dict[str, Any]]:
 
 
 def make_script(experiment_root: Path, limit: int, offset: int,
-                use_page_urls: bool=True):
+                use_page_urls: bool=True, dry_run=False):
     print('set -v')
     for _, site in islice(
             sorted(SITES.items()), offset, offset + limit):
         parsed = urlsplit(site.url_pattern)
         profile_url = site.url_pattern % site.username
         root_url = '{}://{}'.format(parsed.scheme, parsed.netloc)
-        assert '%s' not in root_url  # TODO
         domain = get_domain(root_url)
+        if '%' in root_url:
+            root_url = '{}://{}'.format(parsed.scheme, domain)
+            assert '%s' not in root_url
         root = experiment_root / domain
         if root.exists():
             assert not any(root.iterdir())
-        else:
+        elif not dry_run:
             root.mkdir(parents=True)
         seeds_path = experiment_root.joinpath('{}-seeds.txt'.format(domain))
-        seeds_path.write_text('\n'.join([root_url, profile_url, '']))
+        if not dry_run:
+            seeds_path.write_text('\n'.join([root_url, profile_url, '']))
         print(
             'scrapy crawl extraction -a extractor=profiles:extract_username '
             "-a seeds_url='{seeds_url}' "
@@ -205,9 +209,14 @@ def main():
     arg('--limit', type=int, default=16)
     arg('--offset', type=int, default=0)
     arg('--use-page-urls', type=int, default=1)
+    arg('--dry-run', action='store_true', help='do not write anything')
     args = parser.parse_args()
-    make_script(args.checkpoint_root, limit=args.limit, offset=args.offset,
-                use_page_urls=args.use_page_urls)
+    make_script(args.checkpoint_root,
+                limit=args.limit,
+                offset=args.offset,
+                use_page_urls=args.use_page_urls,
+                dry_run=args.dry_run,
+                )
 
 
 if __name__ == '__main__':
