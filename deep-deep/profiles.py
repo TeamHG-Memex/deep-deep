@@ -1,8 +1,9 @@
 import argparse
-from itertools import islice
 import json
+import logging
 from pathlib import Path
 import re
+import subprocess
 import traceback
 from typing import Any, Dict, List
 from urllib.parse import urlsplit
@@ -166,57 +167,79 @@ def download_sites(api_url, username, password) -> List[Dict[str, Any]]:
     return all_sites
 
 
-def make_script(experiment_root: Path, limit: int, offset: int,
-                use_page_urls: bool=True, dry_run=False):
-    print('set -v')
-    for _, site in islice(
-            sorted(SITES.items()), offset, offset + limit):
-        parsed = urlsplit(site.url_pattern)
-        profile_url = site.url_pattern % site.username
-        root_url = '{}://{}'.format(parsed.scheme, parsed.netloc)
-        domain = get_domain(root_url)
-        if '%' in root_url:
-            root_url = '{}://{}'.format(parsed.scheme, domain)
-            assert '%s' not in root_url
-        root = experiment_root / domain
-        if root.exists():
-            assert not any(root.iterdir())
-        elif not dry_run:
-            root.mkdir(parents=True)
-        seeds_path = experiment_root.joinpath('{}-seeds.txt'.format(domain))
-        if not dry_run:
-            seeds_path.write_text('\n'.join([root_url, profile_url, '']))
-        print(
-            'scrapy crawl extraction -a extractor=profiles:extract_username '
-            "-a seeds_url='{seeds_url}' "
-            '-a checkpoint_path={root} '
-            '-a use_page_urls={use_page_urls} '
-            '-a checkpoint_latest=1 '
-            '-s LOG_LEVEL=INFO -s LOG_FILE={root}/spider.log '
-            '-s CLOSESPIDER_ITEMCOUNT=0 '  # no limit
-            '-o gzip:{root}/{domain}.jl &'
-            .format(seeds_url=seeds_path.absolute(),
-                    domain=domain,
-                    root=root,
-                    use_page_urls=int(use_page_urls),
-                    ))
+def crawl_args(site: Site, experiment_root: Path,
+               use_page_urls: bool=True, timeout: int=0, dry_run: bool=False):
+    parsed = urlsplit(site.url_pattern)
+    profile_url = site.url_pattern % site.username
+    root_url = '{}://{}'.format(parsed.scheme, parsed.netloc)
+    domain = get_domain(root_url)
+    if '%' in root_url:
+        root_url = '{}://{}'.format(parsed.scheme, domain)
+        assert '%s' not in root_url
+    root = (experiment_root / domain).absolute()
+    if root.exists():
+        assert not any(root.iterdir())
+    elif not dry_run:
+        root.mkdir(parents=True)
+    seeds_path = experiment_root.joinpath('{}-seeds.txt'.format(domain))
+    if not dry_run:
+        seeds_path.write_text('\n'.join([root_url, profile_url, '']))
+    return [
+        'scrapy', 'crawl', 'extraction',
+        '-a', 'extractor=profiles:extract_username',
+        '-a', 'seeds_url={}'.format(seeds_path.absolute()),
+        '-a', 'checkpoint_path={}'.format(root),
+        '-a', 'use_page_urls={}'.format(int(use_page_urls)),
+        '-a', 'checkpoint_latest=1',
+        '-s', 'LOG_LEVEL=INFO',
+        '-s', 'LOG_FILE={}/spider.log'.format(root),
+        '-s', 'CLOSESPIDER_ITEMCOUNT=0',  # no limit
+        '-s', 'CLOSESPIDER_TIMEOUT={}'.format(timeout),
+        '-o', 'gzip:{}/{}.jl'.format(root, domain),
+    ]
 
 
 def main():
+    logging.basicConfig(level=logging.INFO, format='%(asctime)-15s %(message)s')
     parser = argparse.ArgumentParser()
     arg = parser.add_argument
     arg('checkpoint_root', type=Path)
-    arg('--limit', type=int, default=16)
+    arg('--max-workers', type=int, default=8)
+    arg('--limit', type=int, default=0)
     arg('--offset', type=int, default=0)
     arg('--use-page-urls', type=int, default=1)
-    arg('--dry-run', action='store_true', help='do not write anything')
+    arg('--timeout', type=int, default=86400)
+    arg('--dry-run', action='store_true', help='do not run or start anything')
     args = parser.parse_args()
-    make_script(args.checkpoint_root,
-                limit=args.limit,
-                offset=args.offset,
-                use_page_urls=args.use_page_urls,
-                dry_run=args.dry_run,
-                )
+    sites = sorted(SITES.values())
+    if args.offset:
+        sites = sites[args.offset:]
+    if args.limit:
+        sites = sites[:args.limit]
+    processes = {}  # type: Dict[Site, subprocess.Popen]
+    for i, site in enumerate(sites, 1):
+        while len(processes) >= args.max_workers:
+            for s, p in list(processes.items()):
+                try:
+                    p.wait(timeout=2)
+                except subprocess.TimeoutExpired:
+                    pass
+                else:
+                    logging.info('Finished: {}'.format(s))
+                    del processes[s]
+        logging.info('[{}] Starting process for {}'.format(i, site))
+        p_args = crawl_args(site, args.checkpoint_root,
+                            use_page_urls=args.use_page_urls,
+                            timeout=args.timeout,
+                            dry_run=args.dry_run)
+        logging.info(' '.join(p_args))
+        if not args.dry_run:
+            process = subprocess.Popen(p_args, stderr=subprocess.DEVNULL)
+            processes[site] = process
+    logging.info('Waiting for the last processes to finish')
+    for s, p in processes.items():
+        p.wait()
+        logging.info('Finished: {}'.format(s))
 
 
 if __name__ == '__main__':
