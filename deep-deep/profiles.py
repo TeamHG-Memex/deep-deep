@@ -1,33 +1,45 @@
 import argparse
 from itertools import islice
+import json
 from pathlib import Path
 import re
-from typing import Dict
+from typing import Any, Dict, List
 from urllib.parse import urlsplit
 
-from scrapy.http.response.text import TextResponse
+import attr
 from deepdeep.utils import get_domain
+import requests
+from scrapy.http.response.text import TextResponse
 
 
-def parse_rules(path: Path) -> Dict[str, Dict[str, str]]:
-    rules = {}
-    for pattern, username, rule_kind, rule_value in _rules_reader(path):
-        domain = get_domain(pattern)
-        rules[domain] = {
-            'url_pattern': pattern,
-            rule_kind: rule_value,
-        }
-    return rules
+@attr.s
+class Site:
+    url = attr.ib()
+    username = attr.ib()
+    status_code = attr.ib()
+    match_type = attr.ib()
+    match_expr = attr.ib()
 
 
-def _rules_reader(path: Path):
+def parse_sites(path: Path) -> Dict[str, Site]:
+    sites = {}
     with path.open() as f:
-        for line in f:
-            yield line.strip().split(', ', 3)
+        for sdict in json.load(f):
+            if sdict['valid']:
+                site = Site(
+                    url=sdict['url'],
+                    username=sdict['test_username_pos'],
+                    status_code=sdict['status_code'],
+                    match_type=sdict['match_type'],
+                    match_expr=sdict['match_expr'],
+                )
+                domain = get_domain(site.url)
+                sites[domain] = site
+    return sites
 
 
-RULES_PATH = Path(__file__).parent / 'profiles.csv'  # type: Path
-RULES = parse_rules(RULES_PATH)
+SITES_PATH = Path(__file__).parent / 'profiles.json'  # type: Path
+SITES = parse_sites(SITES_PATH)
 
 
 def extract_username(response: TextResponse):
@@ -35,22 +47,45 @@ def extract_username(response: TextResponse):
         return
     url = response.url
     domain = get_domain(url)
-    rule = RULES.get(domain)
-    if not rule:
+    site = SITES.get(domain)
+    if not site:
         return
-    pattern = rule['url_pattern'].replace('%s', '([^/?]+)').rstrip('/')
+    pattern = site.url_pattern.replace('%s', '([^/?]+)').rstrip('/')
     match = re.match(pattern, url)
     if match:
         username = match.groups()[0]
-        if 'css' in rule:
-            if not response.css(rule['css']):
-                return
-        elif 'xpath' in rule:
-            if not response.xpath(rule['xpath']):
-                return
+        if _check_response(site, response):
+            yield username, {'html': response.text}
+
+
+def _check_response(site: Site, response: TextResponse) -> bool:
+    """
+    Parse response and test against site criteria to determine
+    whether username exists.
+    """
+    sel = response.selector
+    status_ok = match_ok = True
+
+    if site.status_code is not None:
+        status_ok = site.status_code == response.status
+
+    if site.match_expr is not None:
+        if site.match_type == 'css':
+            match_ok = len(sel.css(site.match_expr)) > 0
+        elif site.match_type == 'text':
+            text_nodes = sel.css(':not(script):not(style)::text').extract()
+            text = []
+            for text_node in text_nodes:
+                stripped = text_node.strip()
+                if stripped:
+                    text.append(stripped)
+            match_ok = site.match_expr in ' '.join(text)
+        elif site.match_type == 'xpath':
+            match_ok = len(sel.xpath(site.match_expr)) > 0
         else:
-            raise ValueError('Unexpected rule: no css or xpath set')
-        yield username, {'html': response.text}
+            raise ValueError('Unknown match_type: {}'.format(site.match_type))
+
+    return status_ok and match_ok
 
 
 def merge_profiles():
@@ -83,13 +118,30 @@ def merge_profiles():
             writer.writerow([url, name])
 
 
+def download_sites(api_url, username, password) -> List[Dict[str, Any]]:
+    auth = requests.post('{}/api/authentication/'.format(api_url),
+                         json={'email': username, 'password': password}).json()
+    headers = {'X-Auth': auth['token']}
+    site_url = '{}/api/site'.format(api_url)
+    all_sites = []
+    page = 1
+    while True:
+        sites = requests.get(site_url, headers=headers,
+                             params={'rpp': 100, 'page': page}).json()
+        if not sites['sites']:
+            break
+        all_sites.extend(sites['sites'])
+        page += 1
+    return all_sites
+
+
 def make_script(experiment_root: Path, limit: int, offset: int,
                 use_page_urls: bool=True):
     print('set -v')
-    for pattern, username, _, _ in islice(
-            _rules_reader(RULES_PATH), offset, offset + limit):
-        parsed = urlsplit(pattern)
-        profile_url = pattern % username
+    for _, site in islice(
+            sorted(SITES.items()), offset, offset + limit):
+        parsed = urlsplit(site.url)
+        profile_url = site.url % site.username
         root_url = '{}://{}'.format(parsed.scheme, parsed.netloc)
         domain = get_domain(root_url)
         root = experiment_root / domain
