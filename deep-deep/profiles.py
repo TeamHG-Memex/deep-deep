@@ -3,6 +3,7 @@ from itertools import islice
 import json
 from pathlib import Path
 import re
+import traceback
 from typing import Any, Dict, List
 from urllib.parse import urlsplit
 
@@ -14,7 +15,7 @@ from scrapy.http.response.text import TextResponse
 
 @attr.s
 class Site:
-    url = attr.ib()
+    url_pattern = attr.ib()
     username = attr.ib()
     status_code = attr.ib()
     match_type = attr.ib()
@@ -27,13 +28,13 @@ def parse_sites(path: Path) -> Dict[str, Site]:
         for sdict in json.load(f):
             if sdict['valid']:
                 site = Site(
-                    url=sdict['url'],
+                    url_pattern=sdict['url'],
                     username=sdict['test_username_pos'],
                     status_code=sdict['status_code'],
                     match_type=sdict['match_type'],
                     match_expr=sdict['match_expr'],
                 )
-                domain = get_domain(site.url)
+                domain = get_domain(site.url_pattern)
                 sites[domain] = site
     return sites
 
@@ -50,7 +51,8 @@ def extract_username(response: TextResponse):
     site = SITES.get(domain)
     if not site:
         return
-    pattern = site.url_pattern.replace('%s', '([^/?]+)').rstrip('/')
+    before, after = site.url_pattern.rstrip('/').split('%s')
+    pattern = '{}([^/?&]+){}'.format(re.escape(before), re.escape(after))
     match = re.match(pattern, url)
     if match:
         username = match.groups()[0]
@@ -86,6 +88,34 @@ def _check_response(site: Site, response: TextResponse) -> bool:
             raise ValueError('Unknown match_type: {}'.format(site.match_type))
 
     return status_ok and match_ok
+
+
+def check_sites(sites=None):
+    if sites is None:
+        sites = list(SITES.values())
+    valid = []
+    invalid = []
+    request_failed = []
+    for site in sites:
+        url = site.url_pattern % site.username
+        print(url)
+        try:
+            r = requests.get(url)
+        except requests.RequestException:
+            traceback.print_exc()
+            request_failed.append(site)
+        else:
+            response = TextResponse(url=url, body=r.content, headers=dict(r.headers))
+            usernames = list(extract_username(response))
+            if usernames:
+                print('valid')
+                valid.append(site)
+            else:
+                print('invalid')
+                invalid.append(site)
+    print('{} valid, {} invalid, {} failed to load'
+          .format(len(valid), len(invalid), len(request_failed)))
+    return valid, invalid, request_failed
 
 
 def merge_profiles():
@@ -140,9 +170,10 @@ def make_script(experiment_root: Path, limit: int, offset: int,
     print('set -v')
     for _, site in islice(
             sorted(SITES.items()), offset, offset + limit):
-        parsed = urlsplit(site.url)
-        profile_url = site.url % site.username
+        parsed = urlsplit(site.url_pattern)
+        profile_url = site.url_pattern % site.username
         root_url = '{}://{}'.format(parsed.scheme, parsed.netloc)
+        assert '%s' not in root_url  # TODO
         domain = get_domain(root_url)
         root = experiment_root / domain
         if root.exists():
