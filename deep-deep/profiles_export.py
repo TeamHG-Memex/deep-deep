@@ -20,6 +20,7 @@ def main():
     with gzip.open(args.output, 'wt') as outf:
         writer = csv.writer(outf)
         for jl_path in Path(args.root).glob('*/*.jl.gz'):
+            print('Reading {} ...'.format(jl_path))
             with json_lines.open(str(jl_path), broken=True) as f:
                 for item in f:
                     url = item['url']
@@ -27,7 +28,7 @@ def main():
                     domain = get_domain(url)
                     by_domain[domain] += 1
                     writer.writerow([domain, url, name])
-    print('Stat by domain:')
+    print(' {:,} profiles total.\n By domain:'.format(sum(by_domain.values())))
     for domain, n_profiles in sorted(by_domain.items(),
                                      key=lambda x: x[1], reverse=True):
         print('{:<30} {:>8,}'.format(domain, n_profiles))
