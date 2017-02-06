@@ -120,36 +120,6 @@ def check_sites(sites=None):
     return valid, invalid, request_failed
 
 
-def merge_profiles():
-    # FIXME - copied from ipython
-    import json, csv, gzip
-    from deepdeep.utils import get_domain
-    from collections import defaultdict
-
-    with open('all_items.jl') as f:
-        all_items = []
-        invalid = 0
-        for line in f:
-            try:
-                all_items.append(json.loads(line))
-            except Exception:
-                invalid += 1
-        print(invalid, 'invalid')
-
-    with gzip.open('crawled_profiles.csv.gz', 'wt') as outf:
-        writer = csv.writer(outf)
-        by_domain = defaultdict(set)
-        for item in all_items:
-            url = item['url']
-            # split by ? fixed a bug that is also fixed in extract_username
-            name = item['key'].split('?')[0]
-            domain = get_domain(url)
-            if name in by_domain[domain]:
-                continue
-            by_domain[domain].add(name)
-            writer.writerow([url, name])
-
-
 def download_sites(api_url, username, password) -> List[Dict[str, Any]]:
     auth = requests.post('{}/api/authentication/'.format(api_url),
                          json={'email': username, 'password': password}).json()
