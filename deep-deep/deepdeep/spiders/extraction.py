@@ -18,10 +18,22 @@ class ExtractionGoal(BaseGoal):
                  request_penalty: float=1.0,
                  item_callback=None,
                  ) -> None:
-        """ A goal is to find maximum number of unique items by doing
+        """ The goal is to find the maximum number of unique items by doing
         minimum number of requests.
-        extractor should be a function that extracts key-value pairs
-        for each item found in response.
+
+        Parameters
+        ----------
+        extractor : callable
+            A function that extracts key-item pairs for each item found in
+            response. Key is a unique item identifier
+            (like item_id or item_type and item_id), and item is extracted
+            data.
+        request_penalty : float
+            Penalty for making a request (default: 1.0).
+            Reward is calculated as number of items minus request penalty.
+        item_callback : callable
+            A function that will be called with response.url, key, item
+            for each extracted item.
         """
         self.extractor = extractor
         self.extracted_items = set()
@@ -56,6 +68,42 @@ class ExtractionGoal(BaseGoal):
 class ExtractionSpider(QSpider):
     """
     This spider learns how to extract data from a single domain.
+    It uses ExtractionGoal goal (extracting maximum number of unique items using
+    minimal number of requests).
+
+    Spider arguments
+    ----------------
+    extractor : str
+        This required argument specifies the python path to the extractor
+        function, and has the form "python.module:function". This function is
+        passed as ``extractor`` argument to ``ExtractionGoal``.
+    export_items : bool
+        Set this option to get extracted items in spider output. The format
+        Each unique item returned by the extractor function will produce an item
+        with 3 fields: 'url' is the response url,
+        'key' is the key returned by the extractor function, and item is item
+        returned by the extractor function.
+    seed_url : str
+        Set this argument in order to start crawling from a single seed URL
+        specified from the command line (if you need multiple seeds,
+        specify a path to a file with them via seeds_url).
+    n_copies : int
+        Number of spider "copies" run at the same time (1 by default).
+        This copies have independed request queues and cookies, but share
+        the same model. This option makes sense when your goal is to train
+        a model tha will later be used elsewhere: running several copies reduces
+        the chance that the model will learn features that change from run
+        to run (e.g. session ids in URLs or depending on a particular order of
+        traversal), so the model should be more general.
+
+    It also accepts all arguments accepted by QSpider and BaseSpider.
+
+    Many arguments have different default values because this spider
+    crawls a single domain instead of multiple domains assumed for QSpider,
+    and to make memory consumption more predictable to make it more practical
+    to run this spider for item extraction (as opposed to model training).
+    Current default configuration will require about 3-6 GB of memory
+    for a typical large website.
     """
     name = 'extraction'
     use_urls = True
@@ -147,7 +195,9 @@ class ExtractionSpider(QSpider):
 
 
 class AutopagerBaseline(ExtractionSpider):
-    """ A BFS + autopager baseline.
+    """ A BFS + autopager baseline. This spider crawles in breadth-first order,
+    but does not increase depth for pagination links. Used only as a baseline
+    to compare ExtractionSpider against.
     """
     name = 'autopager_extraction'
     baseline = True
@@ -167,8 +217,6 @@ class AutopagerBaseline(ExtractionSpider):
         pagination_urls = set(self.autopager.urls(response))
         depth = response.meta.get('depth', 1)
         real_depth = response.meta.get('real_depth', 1)
-        # print(depth, real_depth, response.meta.get('is_pagination'),
-        #      response.request.priority, response.url)
         for req in super()._links_to_requests(response, *args, **kwargs):
             is_pagination = req.url in pagination_urls
             req.meta['depth'] = depth + (1 - is_pagination)
