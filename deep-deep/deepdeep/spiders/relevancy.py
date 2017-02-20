@@ -118,13 +118,14 @@ class ClassifierRelevancySpider(_RelevancySpider):
         'classifier_path',
         'classifier_input',
     }
-    CLASSIFIER_INPUT_ALLOWED_VALUES = ['text', 'html', 'vector']
+    CLASSIFIER_INPUT_ALLOWED_VALUES = ['text', 'text_url', 'html', 'vector']
 
     # a file with saved page relevancy classifier
     classifier_path = None  # type: str
 
     # Relevancy classifier input. Allowed values:
     # * 'text' - use text content of the response (default);
+    # * 'text_url' - use text content and url of the response;
     # * 'html' - use raw HTML of the response;
     # * 'vector' - reuse page vector computed for Q learning.
     classifier_input = 'text'
@@ -152,9 +153,11 @@ class ClassifierRelevancySpider(_RelevancySpider):
             x = self._page_vector(response)
         elif self.classifier_input == 'text':
             x = html2text(response.text)
+        elif self.classifier_input == 'text_url':
+            x = {'text': html2text(response.text), 'url': response.url}
         elif self.classifier_input == 'html':
             x = response.text
         else:
             raise ValueError("self.classifier_input is invalid")
 
-        return self.relevancy_clf.predict_proba([x])[0, 1]
+        return float(self.relevancy_clf.predict_proba([x])[0, 1])

@@ -75,6 +75,9 @@ class BaseSpider(scrapy.Spider):
 
     def _parse_seeds(self, response):
         urls = list(self._get_urls(io.StringIO(response.text)))
+        yield from self._start_requests(urls)
+
+    def _start_requests(self, urls):
         random.shuffle(urls)
         for url in urls:
             yield scrapy.Request(url, self.parse, priority=self.initial_priority)

@@ -168,7 +168,9 @@ class QLearner:
                  pickle_memory: bool = True,
                  dummy: bool = False,
                  er_maxsize: Optional[int] = None,
-                 er_maxlinks: Optional[int] = None
+                 er_maxlinks: Optional[int] = None,
+                 clf_penalty: str='l2',
+                 clf_alpha: float=1e-6
                  ) -> None:
         assert 0 <= gamma < 1
         self.double_learning = double_learning
@@ -182,12 +184,12 @@ class QLearner:
         self.dummy = dummy
 
         self.clf_online = SGDRegressor(
-            penalty='l2',
+            penalty=clf_penalty,
             average=False,
             n_iter=1,
             learning_rate='constant',
             # loss='epsilon_insensitive',
-            alpha=1e-6,
+            alpha=clf_alpha,
             eta0=0.1,
         )
 

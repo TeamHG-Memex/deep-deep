@@ -48,8 +48,10 @@ class QSpider(BaseSpider, metaclass=abc.ABCMeta):
     """
     _ARGS = {
         'double', 'use_urls', 'use_full_urls', 'use_same_domain',
+        'use_link_text', 'use_page_urls', 'use_full_page_urls',
         'use_pages', 'page_vectorizer_path',
         'eps', 'balancing_temperature', 'gamma',
+        'clf_alpha', 'clf_penalty',
         'replay_sample_size', 'replay_maxsize', 'replay_maxlinks',
         'domain_queue_maxsize', 'steps_before_switch',
         'checkpoint_path', 'checkpoint_interval', 'checkpoint_latest',
@@ -69,11 +71,22 @@ class QSpider(BaseSpider, metaclass=abc.ABCMeta):
     use_urls = 0
     use_full_urls = 0
 
+    # whether to use link text feature
+    use_link_text = 1
+
+    # whether to use page URL path/query or a full page URL as a feature
+    use_page_urls = 0
+    use_full_page_urls = 0
+
     # whether to use a 'link is to the same domain' feature
     use_same_domain = 1
 
     # whether to use page content as a feature
     use_pages = 0
+
+    # Link classifier hyper-parameters
+    clf_penalty = 'l2'
+    clf_alpha = 1e-6
 
     # path to a saved page vectorizer model
     page_vectorizer_path = None  # type: str
@@ -140,12 +153,17 @@ class QSpider(BaseSpider, metaclass=abc.ABCMeta):
         self.use_urls = bool(int(self.use_urls))
         self.use_full_urls = bool(int(self.use_full_urls))
         self.use_same_domain = int(self.use_same_domain)
+        self.use_link_text = bool(int(self.use_link_text))
+        self.use_page_urls = bool(int(self.use_page_urls))
+        self.use_full_page_urls = bool(int(self.use_full_page_urls))
         self.double = int(self.double)
         self.stay_in_domain = bool(int(self.stay_in_domain))
         self.steps_before_switch = int(self.steps_before_switch)
         self.replay_sample_size = int(self.replay_sample_size)
         self.replay_maxsize = int(self.replay_maxsize)
         self.replay_maxlinks = int(self.replay_maxlinks)
+        self.clf_penalty = str(self.clf_penalty)
+        self.clf_alpha = float(self.clf_alpha)
         self.domain_queue_maxsize = int(self.domain_queue_maxsize)
         self.baseline = bool(int(self.baseline))
         self.Q = QLearner(
@@ -158,11 +176,16 @@ class QSpider(BaseSpider, metaclass=abc.ABCMeta):
             dummy=self.baseline,
             er_maxsize=self.replay_maxsize,
             er_maxlinks=self.replay_maxlinks,
+            clf_alpha=self.clf_alpha,
+            clf_penalty=self.clf_penalty,
         )
         self.link_vectorizer = LinkVectorizer(
             use_url=bool(self.use_urls),
             use_full_url=bool(self.use_full_urls),
             use_same_domain=bool(self.use_same_domain),
+            use_link_text=bool(self.use_link_text),
+            use_page_url=bool(self.use_page_urls),
+            use_full_page_url=bool(self.use_full_page_urls),
         )
         if self.page_vectorizer_path:
             self.use_pages = True
@@ -173,6 +196,7 @@ class QSpider(BaseSpider, metaclass=abc.ABCMeta):
             self.page_vectorizer = PageVectorizer() if self.use_pages else None
 
         self.total_reward = 0
+        self.rewards = []
         self.steps_before_reschedule = 0
         self.goal = self.get_goal()
 
@@ -286,6 +310,7 @@ class QSpider(BaseSpider, metaclass=abc.ABCMeta):
             reward = self.goal.get_reward(response)
             self.update_node(response, {'reward': reward})
             self.total_reward += reward
+            self.rewards.append(reward)
             self.Q.add_experience(
                 as_t=as_t,
                 AS_t1=links_matrix,
@@ -297,7 +322,8 @@ class QSpider(BaseSpider, metaclass=abc.ABCMeta):
         if reward > 0.5:
             self.relevant_domains.add(domain)
 
-        return list(self._links_to_requests(links, links_matrix)), reward
+        return (list(self._links_to_requests(response, links, links_matrix)),
+                reward)
 
     def _extract_links(self, response: TextResponse) -> List[Dict]:
         """ Return a list of all unique links on a page """
@@ -309,6 +335,7 @@ class QSpider(BaseSpider, metaclass=abc.ABCMeta):
         ))
 
     def _links_to_requests(self,
+                           response: TextResponse,
                            links: List[Dict],
                            links_matrix: sp.csr_matrix,
                            ) -> Iterator[scrapy.Request]:
@@ -484,6 +511,7 @@ class QSpider(BaseSpider, metaclass=abc.ABCMeta):
                 logging.debug(" {:0.4f} {:0.4f} {}".format(score1, score2, ex))
 
         average_reward = self.total_reward / self.Q.t_ if self.Q.t_ else 0
+        run_average_reward = np.mean(self.rewards[-100:]) if self.rewards else 0
         coef_norm_online = self.Q.coef_norm(online=True)
         coef_norm_target = self.Q.coef_norm(online=False)
         logging.debug(
@@ -498,6 +526,7 @@ class QSpider(BaseSpider, metaclass=abc.ABCMeta):
         self.goal.debug_print()
         self.log_value('Reward/total', self.total_reward)
         self.log_value('Reward/average', average_reward)
+        self.log_value('Reward/run-average', run_average_reward)
         self.log_value('Coef/norm_online', coef_norm_online)
         self.log_value('Coef/norm_target', coef_norm_target)
 
