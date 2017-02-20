@@ -51,6 +51,7 @@ class QSpider(BaseSpider, metaclass=abc.ABCMeta):
         'use_link_text', 'use_page_urls', 'use_full_page_urls',
         'use_pages', 'page_vectorizer_path',
         'eps', 'balancing_temperature', 'gamma',
+        'clf_alpha', 'clf_penalty',
         'replay_sample_size', 'replay_maxsize', 'replay_maxlinks',
         'domain_queue_maxsize', 'steps_before_switch',
         'checkpoint_path', 'checkpoint_interval', 'checkpoint_latest',
@@ -82,6 +83,10 @@ class QSpider(BaseSpider, metaclass=abc.ABCMeta):
 
     # whether to use page content as a feature
     use_pages = 0
+
+    # Link classifier hyper-parameters
+    clf_penalty = 'l2'
+    clf_alpha = 1e-6
 
     # path to a saved page vectorizer model
     page_vectorizer_path = None  # type: str
@@ -157,6 +162,8 @@ class QSpider(BaseSpider, metaclass=abc.ABCMeta):
         self.replay_sample_size = int(self.replay_sample_size)
         self.replay_maxsize = int(self.replay_maxsize)
         self.replay_maxlinks = int(self.replay_maxlinks)
+        self.clf_penalty = str(self.clf_penalty)
+        self.clf_alpha = float(self.clf_alpha)
         self.domain_queue_maxsize = int(self.domain_queue_maxsize)
         self.baseline = bool(int(self.baseline))
         self.Q = QLearner(
@@ -169,6 +176,8 @@ class QSpider(BaseSpider, metaclass=abc.ABCMeta):
             dummy=self.baseline,
             er_maxsize=self.replay_maxsize,
             er_maxlinks=self.replay_maxlinks,
+            clf_alpha=self.clf_alpha,
+            clf_penalty=self.clf_penalty,
         )
         self.link_vectorizer = LinkVectorizer(
             use_url=bool(self.use_urls),

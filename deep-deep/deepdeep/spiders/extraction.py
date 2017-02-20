@@ -62,6 +62,8 @@ class ExtractionSpider(QSpider):
     use_link_text = 1
     use_page_urls = 1
     use_same_domain = 0  # not supported by eli5 yet, and we don't need it
+    clf_penalty = 'l1'
+    clf_alpha = 0.0001
     balancing_temperature = 5.0  # high to make all simultaneous runs equal
     export_items = 1
     export_cdr = 0
