@@ -43,13 +43,7 @@ def get_feature_names_scales(
     feature_names = FeatureNames(
         all_features_names, n_features=n_features, unkn_template='FEATURE[%d]')
     if with_scales:
-        coef_scale = np.empty([sum(map(len, coef_scales))])
-        start_idx = 0
-        for arr in coef_scales:
-            end_idx = start_idx + len(arr)
-            coef_scales[start_idx: end_idx] = arr
-            start_idx = end_idx
-        return feature_names, coef_scale
+        return feature_names, np.concatenate(coef_scales)
     else:
         return feature_names
 
