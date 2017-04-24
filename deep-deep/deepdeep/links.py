@@ -3,11 +3,11 @@ import re
 from urllib.parse import urljoin
 from typing import Iterator, Dict, Optional, Set, Iterable, Union, Tuple
 
-from parsel import Selector
-from scrapy.http import TextResponse
-from scrapy.linkextractors import IGNORED_EXTENSIONS
-from scrapy.utils.response import get_base_url
-from scrapy.utils.url import url_has_any_extension
+from parsel import Selector  # type: ignore
+from scrapy.http import TextResponse  # type: ignore
+from scrapy.linkextractors import IGNORED_EXTENSIONS  # type: ignore
+from scrapy.utils.response import get_base_url  # type: ignore
+from scrapy.utils.url import url_has_any_extension  # type: ignore
 
 from deepdeep.utils import canonicalize_url, get_domain
 
@@ -32,11 +32,20 @@ def extract_js_link(href: str) -> Optional[str]:
     m = _js_link_search(href)
     if m:
         return m.group('url')
+    return None
 
 
 def extract_link_dicts(
-        selector: Selector, base_url: str, only_urls: bool=False)\
-        -> Union[Iterator[Dict], Iterator[str]]:
+        selector: Selector, base_url: str) -> Iterator[Dict]:
+    return _extract_link_dicts(selector, base_url)
+
+
+def extract_links(selector: Selector, base_url: str) -> Iterator[str]:
+    return _extract_link_dicts(selector, base_url, only_urls=True)
+
+
+def _extract_link_dicts(
+        selector: Selector, base_url: str, only_urls: bool=False):
     """
     Extract dicts with link information::
 
@@ -111,6 +120,7 @@ def extract_link_dicts(
 
 def iter_response_link_dicts(response: TextResponse,
                              limit_by_domain: bool=True) -> Iterator[Dict]:
+    page_url = response.url
     domain_from = get_domain(response.url)
     base_url = get_base_url(response)
     for link in extract_link_dicts(response.selector, base_url):
@@ -118,6 +128,7 @@ def iter_response_link_dicts(response: TextResponse,
         if limit_by_domain and link['domain_to'] != domain_from:
             continue
         link['domain_from'] = domain_from
+        link['page_url'] = page_url
         yield link
 
 

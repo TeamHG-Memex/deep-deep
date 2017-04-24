@@ -4,9 +4,9 @@ import random
 import logging
 from typing import Optional
 
-import scrapy
-from scrapy.exceptions import CloseSpider
-from scrapy.utils.url import guess_scheme, add_http_if_no_scheme
+import scrapy  # type: ignore
+from scrapy.exceptions import CloseSpider  # type: ignore
+from scrapy.utils.url import guess_scheme, add_http_if_no_scheme  # type: ignore
 
 from deepdeep.links import DictLinkExtractor
 from deepdeep.downloadermiddlewares import offdomain_request_dropped
@@ -43,7 +43,7 @@ class BaseSpider(scrapy.Spider):
             if k not in self.ALLOWED_ARGUMENTS:
                 raise ValueError(
                     "Unsupported argument: %s. Supported arguments: %r" % (
-                        k, self.ALLOWED_ARGUMENTS)
+                        k, sorted(self.ALLOWED_ARGUMENTS))
                 )
 
     def start_requests(self):
@@ -75,6 +75,9 @@ class BaseSpider(scrapy.Spider):
 
     def _parse_seeds(self, response):
         urls = list(self._get_urls(io.StringIO(response.text)))
+        yield from self._start_requests(urls)
+
+    def _start_requests(self, urls):
         random.shuffle(urls)
         for url in urls:
             yield scrapy.Request(url, self.parse, priority=self.initial_priority)
@@ -90,7 +93,7 @@ class BaseSpider(scrapy.Spider):
         self.response_count += 1
         max_items = self.crawler.settings.getint('CLOSESPIDER_ITEMCOUNT',
                                                  float('inf'))
-        if self.response_count >= max_items:
+        if max_items != 0 and self.response_count >= max_items:
             raise CloseSpider("item_count")
 
     def on_offdomain_request_dropped(self, request):

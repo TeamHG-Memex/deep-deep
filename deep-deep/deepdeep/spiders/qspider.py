@@ -1,22 +1,23 @@
 # -*- coding: utf-8 -*-
 import json
 from pathlib import Path
-from typing import Dict, Tuple, Union, Optional, List, Iterator, Set
+from typing import Any, Dict, Tuple, Union, Optional, List, Iterator, Set
 import abc
 import time
 import gzip
 import logging
 
-import psutil
-import tqdm
-import joblib
-import numpy as np
-import scipy.sparse as sp
-import networkx as nx
-import scrapy
-from scrapy.http import TextResponse, Response
-from scrapy.statscollectors import StatsCollector
-from scrapy_cdr.utils import text_cdr_item
+import psutil  # type: ignore
+import tqdm  # type: ignore
+import joblib  # type: ignore
+import numpy as np  # type: ignore
+import scipy.sparse as sp  # type: ignore
+import networkx as nx  # type: ignore
+import scrapy  # type: ignore
+from scrapy.http import TextResponse, Response  # type: ignore
+from scrapy.statscollectors import StatsCollector  # type: ignore
+from scrapy_cdr.utils import text_cdr_item  # type: ignore
+import tensorboard_logger  # type: ignore
 
 from deepdeep.queues import (
     BalancedPriorityQueue,
@@ -25,9 +26,8 @@ from deepdeep.queues import (
     priority_to_score, FLOAT_PRIORITY_MULTIPLIER)
 from deepdeep.scheduler import Scheduler
 from deepdeep.spiders._base import BaseSpider
-from deepdeep.utils import set_request_domain, get_domain
 from deepdeep.qlearning import QLearner
-from deepdeep.utils import log_time
+from deepdeep.utils import set_request_domain, get_domain, log_time, chunks
 from deepdeep.vectorizers import LinkVectorizer, PageVectorizer
 from deepdeep.goals import BaseGoal
 from deepdeep.metrics import ndcg_score
@@ -48,17 +48,20 @@ class QSpider(BaseSpider, metaclass=abc.ABCMeta):
     """
     _ARGS = {
         'double', 'use_urls', 'use_full_urls', 'use_same_domain',
+        'use_link_text', 'use_page_urls', 'use_full_page_urls',
         'use_pages', 'page_vectorizer_path',
         'eps', 'balancing_temperature', 'gamma',
-        'replay_sample_size', 'replay_maxsize', 'steps_before_switch',
-        'checkpoint_path', 'checkpoint_interval',
+        'clf_alpha', 'clf_penalty',
+        'replay_sample_size', 'replay_maxsize', 'replay_maxlinks',
+        'domain_queue_maxsize', 'steps_before_switch',
+        'checkpoint_path', 'checkpoint_interval', 'checkpoint_latest',
         'baseline', 'export_cdr',
     }
     ALLOWED_ARGUMENTS = _ARGS | BaseSpider.ALLOWED_ARGUMENTS
     custom_settings = {
         # 'DEPTH_LIMIT': 100,
         'DEPTH_PRIORITY': 1,
-    }
+    }  # type: Dict[str, Any]
     initial_priority = score_to_priority(5)
 
     # whether to export page data as CDR items
@@ -68,11 +71,22 @@ class QSpider(BaseSpider, metaclass=abc.ABCMeta):
     use_urls = 0
     use_full_urls = 0
 
+    # whether to use link text feature
+    use_link_text = 1
+
+    # whether to use page URL path/query or a full page URL as a feature
+    use_page_urls = 0
+    use_full_page_urls = 0
+
     # whether to use a 'link is to the same domain' feature
     use_same_domain = 1
 
     # whether to use page content as a feature
     use_pages = 0
+
+    # Link classifier hyper-parameters
+    clf_penalty = 'l2'
+    clf_alpha = 1e-6
 
     # path to a saved page vectorizer model
     page_vectorizer_path = None  # type: str
@@ -106,11 +120,20 @@ class QSpider(BaseSpider, metaclass=abc.ABCMeta):
     # about 10Kb on average.
     replay_maxsize = 100000
 
+    # Maximum number of links: useful to limit when running separate spiders
+    # for each domain. No limit by default.
+    replay_maxlinks = 0
+
+    domain_queue_maxsize = 0  # no limit by default
+
     # current model is saved every checkpoint_interval timesteps
     checkpoint_interval = 1000
 
     # Where to store checkpoints. By default they are not stored.
     checkpoint_path = None  # type: Optional[str]
+
+    # Store only latest checkpoint to save disk space.
+    checkpoint_latest = 0
 
     # Is spider allowed to follow out-of-domain links?
     # XXX: it is not enough to set this to False; a middleware should be also
@@ -130,11 +153,18 @@ class QSpider(BaseSpider, metaclass=abc.ABCMeta):
         self.use_urls = bool(int(self.use_urls))
         self.use_full_urls = bool(int(self.use_full_urls))
         self.use_same_domain = int(self.use_same_domain)
+        self.use_link_text = bool(int(self.use_link_text))
+        self.use_page_urls = bool(int(self.use_page_urls))
+        self.use_full_page_urls = bool(int(self.use_full_page_urls))
         self.double = int(self.double)
         self.stay_in_domain = bool(int(self.stay_in_domain))
         self.steps_before_switch = int(self.steps_before_switch)
         self.replay_sample_size = int(self.replay_sample_size)
         self.replay_maxsize = int(self.replay_maxsize)
+        self.replay_maxlinks = int(self.replay_maxlinks)
+        self.clf_penalty = str(self.clf_penalty)
+        self.clf_alpha = float(self.clf_alpha)
+        self.domain_queue_maxsize = int(self.domain_queue_maxsize)
         self.baseline = bool(int(self.baseline))
         self.Q = QLearner(
             steps_before_switch=self.steps_before_switch,
@@ -145,11 +175,17 @@ class QSpider(BaseSpider, metaclass=abc.ABCMeta):
             pickle_memory=False,
             dummy=self.baseline,
             er_maxsize=self.replay_maxsize,
+            er_maxlinks=self.replay_maxlinks,
+            clf_alpha=self.clf_alpha,
+            clf_penalty=self.clf_penalty,
         )
         self.link_vectorizer = LinkVectorizer(
             use_url=bool(self.use_urls),
             use_full_url=bool(self.use_full_urls),
             use_same_domain=bool(self.use_same_domain),
+            use_link_text=bool(self.use_link_text),
+            use_page_url=bool(self.use_page_urls),
+            use_full_page_url=bool(self.use_full_page_urls),
         )
         if self.page_vectorizer_path:
             self.use_pages = True
@@ -160,6 +196,7 @@ class QSpider(BaseSpider, metaclass=abc.ABCMeta):
             self.page_vectorizer = PageVectorizer() if self.use_pages else None
 
         self.total_reward = 0
+        self.rewards = []  # type: List[float]
         self.steps_before_reschedule = 0
         self.goal = self.get_goal()
 
@@ -167,13 +204,26 @@ class QSpider(BaseSpider, metaclass=abc.ABCMeta):
         self.relevant_domains = set()  # type: Set[str]
 
         self.checkpoint_interval = int(self.checkpoint_interval)
+        self.checkpoint_latest = bool(int(self.checkpoint_latest))
         self._save_params_json()
+        self._setup_tensorboard_logger()
 
     def _save_params_json(self):
         if self.checkpoint_path:
             params = json.dumps(self.get_params(), indent=4)
             logging.info(params)
             (Path(self.checkpoint_path)/"params.json").write_text(params)
+
+    def _setup_tensorboard_logger(self):
+        if self.checkpoint_path:
+            self._tensortboard_logger = tensorboard_logger.Logger(
+                self.checkpoint_path, flush_secs=5)
+        else:
+            self._tensortboard_logger = None
+
+    def log_value(self, name, value):
+        if self._tensortboard_logger and self.Q.t_ % 20 == 0:
+            self._tensortboard_logger.log_value(name, value, step=self.Q.t_)
 
     @abc.abstractmethod
     def get_goal(self) -> BaseGoal:
@@ -252,12 +302,15 @@ class QSpider(BaseSpider, metaclass=abc.ABCMeta):
         links = self._extract_links(response)
         links_matrix = self.link_vectorizer.transform(links) if links else None
         links_matrix = self.Q.join_As(links_matrix, page_vector)
+        if links_matrix is not None:
+            links_matrix = links_matrix.astype(np.float32)  # saving memory
 
         reward = 0
         if not self.is_seed(response):
             reward = self.goal.get_reward(response)
             self.update_node(response, {'reward': reward})
             self.total_reward += reward
+            self.rewards.append(reward)
             self.Q.add_experience(
                 as_t=as_t,
                 AS_t1=links_matrix,
@@ -269,7 +322,8 @@ class QSpider(BaseSpider, metaclass=abc.ABCMeta):
         if reward > 0.5:
             self.relevant_domains.add(domain)
 
-        return list(self._links_to_requests(links, links_matrix)), reward
+        return (list(self._links_to_requests(response, links, links_matrix)),
+                reward)
 
     def _extract_links(self, response: TextResponse) -> List[Dict]:
         """ Return a list of all unique links on a page """
@@ -281,6 +335,7 @@ class QSpider(BaseSpider, metaclass=abc.ABCMeta):
         ))
 
     def _links_to_requests(self,
+                           response: TextResponse,
                            links: List[Dict],
                            links_matrix: sp.csr_matrix,
                            ) -> Iterator[scrapy.Request]:
@@ -318,7 +373,8 @@ class QSpider(BaseSpider, metaclass=abc.ABCMeta):
         to create a new queue.
         """
         def new_queue(domain):
-            return RequestsPriorityQueue(fifo=True)
+            return RequestsPriorityQueue(fifo=True,
+                                         maxsize=self.domain_queue_maxsize)
         return BalancedPriorityQueue(
             queue_factory=new_queue,
             eps=self.eps,
@@ -363,7 +419,8 @@ class QSpider(BaseSpider, metaclass=abc.ABCMeta):
                 vectors.append(request.meta['link_vector'])
                 indices.append(idx)
             if vectors:
-                scores = self.Q.predict(sp.vstack(vectors))
+                scores = np.concatenate([self.Q.predict(sp.vstack(batch))
+                                         for batch in chunks(vectors, 4096)])
                 priorities[indices] = scores * FLOAT_PRIORITY_MULTIPLIER
 
             # keep scores in order to compute metrics later
@@ -394,6 +451,8 @@ class QSpider(BaseSpider, metaclass=abc.ABCMeta):
         #
         domain_scores_old = np.array([p.max() if p.size else 0 for p in scores_old])
         domain_scores_new = np.array([p.max() if p.size else 0 for p in scores_new])
+        if len(scores_new) == 0:
+            return 0
         scores_old_all = np.hstack(scores_old)
         scores_new_all = np.hstack(scores_new)
 
@@ -451,22 +510,40 @@ class QSpider(BaseSpider, metaclass=abc.ABCMeta):
             for ex, score1, score2 in zip(examples, scores_target, scores_online):
                 logging.debug(" {:0.4f} {:0.4f} {}".format(score1, score2, ex))
 
+        average_reward = self.total_reward / self.Q.t_ if self.Q.t_ else 0
+        run_average_reward = np.mean(self.rewards[-100:]) if self.rewards else 0
+        coef_norm_online = self.Q.coef_norm(online=True)
+        coef_norm_target = self.Q.coef_norm(online=False)
         logging.debug(
             "t={}, return={:0.4f}, avg reward={:0.4f}, L2 norm: {:0.4f} {:0.4f}"
             .format(
                 self.Q.t_,
                 self.total_reward,
-                self.total_reward / self.Q.t_ if self.Q.t_ else 0,
-                self.Q.coef_norm(online=True),
-                self.Q.coef_norm(online=False),
+                average_reward,
+                coef_norm_online,
+                coef_norm_target,
             ))
         self.goal.debug_print()
+        self.log_value('Reward/total', self.total_reward)
+        self.log_value('Reward/average', average_reward)
+        self.log_value('Reward/run-average', run_average_reward)
+        self.log_value('Coef/norm_online', coef_norm_online)
+        self.log_value('Coef/norm_target', coef_norm_target)
 
         stats = self.get_stats_item()
         logging.debug(
             "Domains: {domains_open} open, {domains_closed} closed; "
-            "{todo} requests in queue, {processed} processed, {dropped} dropped"
+            "{todo} requests in queue, {processed} processed, "
+            "{dropped} dropped, {crawled_domains} crawled, "
+            "{relevant_domains} relevant."
             .format(**stats))
+        self.log_value('Domains/crawled', stats['crawled_domains'])
+        self.log_value('Domains/relevant', stats['relevant_domains'])
+        self.log_value('Domains/open', stats['domains_open'])
+        self.log_value('Domains/closed', stats['domains_closed'])
+        self.log_value('Queue/todo', stats['todo'])
+        self.log_value('Queue/processed', stats['processed'])
+        self.log_value('Queue/dropped', stats['dropped'])
 
     def get_stats_item(self):
         domains_open, domains_closed = self._domain_stats()
@@ -524,10 +601,18 @@ class QSpider(BaseSpider, metaclass=abc.ABCMeta):
         if not self.checkpoint_path:
             return
         path = Path(self.checkpoint_path)
-        self.dump_policy(path/("Q-%s.joblib" % self.Q.t_), False)
-        # self.dump_policy(path/("Q-latest.joblib"), True)
+        id_ = 'latest' if self.checkpoint_latest else self.Q.t_
+        self.dump_policy(path/("Q-%s.joblib" % id_), False)
         self.dump_crawl_graph(path/"graph.pickle")
-        self.dump_queue(path/("queue-%s.csv.gz" % self.Q.t_))
+        self.dump_queue(path/("queue-%s.csv.gz" % id_))
+        # Logging queue memory stats only on checkpoints because we need
+        # to do a linear scan over all queues, which can be slow.
+        queue = self.scheduler.queue
+        self.logger.info(
+            'Queue entries {:,}, vectors bytes {:,}; '
+            'Replay entries {:,}, vectors bytes {:,}'
+            .format(len(queue), queue.nbytes(),
+                    len(self.Q.memory), self.Q.memory.nbytes()))
 
     @log_time
     def dump_crawl_graph(self, path) -> None:

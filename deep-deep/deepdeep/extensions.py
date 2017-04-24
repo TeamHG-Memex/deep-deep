@@ -3,8 +3,8 @@ from __future__ import absolute_import
 import logging
 import pprint
 
-from twisted.internet.task import LoopingCall
-from scrapy import signals
+from twisted.internet.task import LoopingCall  # type: ignore
+from scrapy import signals  # type: ignore
 
 logger = logging.getLogger(__name__)
 

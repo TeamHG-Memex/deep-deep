@@ -6,7 +6,7 @@ Source: https://gist.github.com/mblondel/7337391
 (C) Mathieu Blondel
 License: BSD 3 clause
 """
-import numpy as np
+import numpy as np  # type: ignore
 
 
 def dcg_score(y_true, y_score, k=10, gains="exponential"):

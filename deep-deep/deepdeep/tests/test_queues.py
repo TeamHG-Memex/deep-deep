@@ -1,7 +1,6 @@
 # -*- coding: utf-8 -*-
-import scrapy
+import scrapy  # type: ignore
 
-from deepdeep.scheduler import Scheduler
 from deepdeep.queues import RequestsPriorityQueue
 
 

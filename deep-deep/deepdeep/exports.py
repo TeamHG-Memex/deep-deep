@@ -2,9 +2,9 @@
 import os
 import gzip
 
-from zope.interface import Interface, implementer
-from w3lib.url import file_uri_to_path
-from scrapy.extensions.feedexport import IFeedStorage
+from zope.interface import Interface, implementer  # type: ignore
+from w3lib.url import file_uri_to_path  # type: ignore
+from scrapy.extensions.feedexport import IFeedStorage  # type: ignore
 
 
 @implementer(IFeedStorage)

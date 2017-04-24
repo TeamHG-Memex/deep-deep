@@ -26,9 +26,10 @@ from typing import (
     Sized,
 )
 
-import numpy as np
-import scrapy
-from deepdeep.utils import softmax, log_time
+import numpy as np  # type: ignore
+import scrapy  # type: ignore
+
+from deepdeep.utils import softmax, log_time, csr_nbytes
 
 
 FLOAT_PRIORITY_MULTIPLIER = 10000
@@ -51,7 +52,7 @@ class RequestsPriorityQueue(Sized):
     In-memory priority queue for requests.
 
     Unlike default Scrapy queues it supports high-cardinality priorities
-    (but no float priorities becase scrapy.Request doesn't support them).
+    (but no float priorities because scrapy.Request doesn't support them).
 
     This queue allows to change request priorities. To do it
 
@@ -59,7 +60,9 @@ class RequestsPriorityQueue(Sized):
     2. call queue.change_priority(entry, new_priority) for each entry;
     3. call queue.heapify()
 
-    It also allows to remove a request from a queue using remove_entry.
+    It also allows to remove a request from a queue using remove_entry,
+    and limit queue size with maxsize argument (queue is trimmed when
+    updating request priorities).
     """
 
     REMOVED = object()
@@ -67,11 +70,12 @@ class RequestsPriorityQueue(Sized):
     REMOVED_PRIORITY = score_to_priority(15000)
     EMPTY_PRIORITY = score_to_priority(-15000)
 
-    def __init__(self, fifo: bool=True) -> None:
+    def __init__(self, fifo: bool=True, maxsize: Optional[int]=None) -> None:
         # entries are lists of [int, int, scrapy.Request]
         self.entries = []  # type: List[List]
         step = 1 if fifo else -1
         self.counter = itertools.count(step=step)
+        self.maxsize = maxsize
 
     def push(self, request: scrapy.Request) -> List:
         count = next(self.counter)
@@ -120,8 +124,21 @@ class RequestsPriorityQueue(Sized):
         """
         requests = list(self.iter_requests())
         new_priorities = compute_priority_func(requests)
-        for entry, priority in zip(self.iter_active_entries(), new_priorities):
-            self.change_priority(entry, priority)
+        n = len(new_priorities)
+        if self.maxsize and n > self.maxsize:
+            n_rm = n - self.maxsize
+            to_remove_idx = np.array(new_priorities).argpartition(n_rm)[:n_rm]
+            to_remove = np.zeros(n, dtype=np.bool)
+            to_remove[to_remove_idx] = True
+        else:
+            to_remove = itertools.repeat(False)
+        for entry, priority, remove in zip(self.iter_active_entries(),
+                                           new_priorities,
+                                           to_remove):
+            if remove:
+                self.remove_entry(entry)
+            else:
+                self.change_priority(entry, priority)
         self.heapify()
 
     def remove_entry(self, entry: List) -> scrapy.Request:
@@ -182,6 +199,12 @@ class RequestsPriorityQueue(Sized):
 
     def __len__(self) -> int:
         return len(self.entries)
+
+    def nbytes(self) -> int:
+        """
+        Memory taken by link vectors in requests stored in self.entries.
+        """
+        return sum(request_nbytes(request) for _, _, request in self.entries)
 
 
 class BalancedPriorityQueue:
@@ -338,3 +361,18 @@ class BalancedPriorityQueue:
 
     def __len__(self) -> int:
         return sum(len(q) for q in self.queues.values()) + len(self._buffer)
+
+    def nbytes(self) -> int:
+        """
+        Memory taken by link vectors in requests stored in all queues
+        and self.buffer.
+        """
+        return (sum(q.nbytes() for q in self.queues.values()) +
+                sum(map(request_nbytes, self._buffer)))
+
+
+def request_nbytes(request):
+    if hasattr(request, 'meta'):
+        return csr_nbytes(request.meta.get('link_vector'))
+    else:
+        return 0

@@ -2,9 +2,9 @@
 import math
 from typing import List
 
-import formasaurus
-from formasaurus.text import tokenize, token_ngrams
-from scrapy.http import Response
+import formasaurus  # type: ignore
+from formasaurus.text import tokenize, token_ngrams  # type: ignore
+from scrapy.http import Response  # type: ignore
 
 from deepdeep.utils import dict_aggregate_max, html2text
 

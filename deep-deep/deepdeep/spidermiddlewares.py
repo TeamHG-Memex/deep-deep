@@ -4,11 +4,11 @@ from __future__ import absolute_import
 import logging
 import itertools
 
-import networkx as nx
-import scrapy
+import networkx as nx  # type: ignore
+import scrapy  # type: ignore
 from scrapy import signals
-from scrapy.dupefilters import RFPDupeFilter
-from scrapy.exceptions import NotConfigured
+from scrapy.dupefilters import RFPDupeFilter  # type: ignore
+from scrapy.exceptions import NotConfigured  # type: ignore
 
 logger = logging.getLogger(__name__)
 

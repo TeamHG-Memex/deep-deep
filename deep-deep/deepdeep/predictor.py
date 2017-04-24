@@ -2,11 +2,11 @@
 from __future__ import absolute_import
 from typing import List, Tuple
 
-import joblib
-import parsel
-from w3lib.html import get_base_url
-from scrapy.http.response.text import TextResponse
-from scrapy.utils.response import get_base_url as scrapy_get_base_url
+import joblib  # type: ignore
+import parsel  # type: ignore
+from w3lib.html import get_base_url  # type: ignore
+from scrapy.http.response.text import TextResponse  # type: ignore
+from scrapy.utils.response import get_base_url as scrapy_get_base_url  # type: ignore
 
 from deepdeep.links import extract_link_dicts
 from deepdeep.qlearning import QLearner

@@ -3,19 +3,22 @@ from __future__ import absolute_import
 from itertools import chain
 from typing import Dict
 
-import numpy as np
-from sklearn.decomposition import LatentDirichletAllocation
-from sklearn.feature_extraction.text import HashingVectorizer, CountVectorizer
-from sklearn.pipeline import make_union, make_pipeline
-from sklearn.preprocessing import FunctionTransformer, Normalizer
-from formasaurus.text import normalize
+import numpy as np  # type: ignore
+from sklearn.decomposition import LatentDirichletAllocation  # type: ignore
+from sklearn.feature_extraction.text import HashingVectorizer, CountVectorizer  # type: ignore
+from sklearn.pipeline import make_union, make_pipeline  # type: ignore
+from sklearn.preprocessing import FunctionTransformer, Normalizer  # type: ignore
+from formasaurus.text import normalize  # type: ignore
 
 from deepdeep.utils import url_path_query, html2text, canonicalize_url
 
 
 def LinkVectorizer(use_url: bool=False,
                    use_full_url: bool=False,
-                   use_same_domain: bool=True
+                   use_same_domain: bool=True,
+                   use_link_text: bool=True,
+                   use_page_url: bool=False,
+                   use_full_page_url: bool=False,
                    ):
     """
     Vectorizer for converting link dicts to feature vectors.
@@ -25,16 +28,17 @@ def LinkVectorizer(use_url: bool=False,
 
     vectorizers = []
 
-    text_vec = HashingVectorizer(
-        preprocessor=_link_inside_text,
-        n_features=1024*1024,
-        binary=True,
-        norm='l2',
-        # ngram_range=(1, 2),
-        analyzer='char',
-        ngram_range=(3, 5),
-    )
-    vectorizers.append(text_vec)
+    if use_link_text:
+        text_vec = HashingVectorizer(
+            preprocessor=_link_inside_text,
+            n_features=1024*1024,
+            binary=True,
+            norm='l2',
+            # ngram_range=(1, 2),
+            analyzer='char',
+            ngram_range=(3, 5),
+        )
+        vectorizers.append(text_vec)
 
     if use_same_domain:
         same_domain = FunctionTransformer(_same_domain_feature, validate=False)
@@ -42,16 +46,28 @@ def LinkVectorizer(use_url: bool=False,
 
     if use_url or use_full_url:
         preprocessor = _clean_url if use_url else _clean_url_keep_domain
-        url_vec = HashingVectorizer(
-            preprocessor=preprocessor,
-            n_features=1024*1024,
-            binary=True,
-            analyzer='char',
-            ngram_range=(4, 5),
-        )
-        vectorizers.append(url_vec)
+        vectorizers.append(_url_vectorizer(preprocessor))
+
+    if use_page_url or use_full_page_url:
+        # It would be faster to run it only once per page
+        preprocessor = (
+            _clean_page_url if use_url else _clean_page_url_keep_domain)
+        vectorizers.append(_url_vectorizer(preprocessor))
+
+    if not vectorizers:
+        raise ValueError('Please enable at least one vectorizer')
 
     return make_union(*vectorizers)
+
+
+def _url_vectorizer(preprocessor):
+    return HashingVectorizer(
+        preprocessor=preprocessor,
+        n_features=1024*1024,
+        binary=True,
+        analyzer='char',
+        ngram_range=(4, 5),
+    )
 
 
 def PageVectorizer():
@@ -92,7 +108,7 @@ def LDAPageVctorizer(n_topics: int, batch_size: int, min_df: int, verbose=1,
 
 
 def _get_stop_words():
-    import stop_words
+    import stop_words  # type: ignore
 
     return set(chain.from_iterable(
         stop_words.get_stop_words(lang)
@@ -112,6 +128,14 @@ def _clean_url(link: Dict) -> str:
 
 def _clean_url_keep_domain(link: Dict) -> str:
     return canonicalize_url(link.get('url'))
+
+
+def _clean_page_url(link: Dict) -> str:
+    return url_path_query(_clean_page_url_keep_domain(link))
+
+
+def _clean_page_url_keep_domain(link: Dict) -> str:
+    return canonicalize_url(link.get('page_url'))
 
 
 def _same_domain_feature(links):

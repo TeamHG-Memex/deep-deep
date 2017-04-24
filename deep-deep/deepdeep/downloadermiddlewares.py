@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 import logging
 
-from scrapy.exceptions import IgnoreRequest
+from scrapy.exceptions import IgnoreRequest  # type: ignore
 
 from deepdeep.utils import get_domain
 

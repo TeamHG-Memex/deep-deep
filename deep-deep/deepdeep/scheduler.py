@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
-from scrapy.utils.misc import load_object
+from scrapy.utils.misc import load_object  # type: ignore
+
 from deepdeep.queues import RequestsPriorityQueue, QueueClosed
 
 

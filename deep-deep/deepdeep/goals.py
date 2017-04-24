@@ -12,8 +12,8 @@ from weakref import WeakKeyDictionary
 from collections import defaultdict
 import logging
 
-from scrapy.http.response.text import TextResponse
-from scrapy.http import Response
+from scrapy.http.response.text import TextResponse  # type: ignore
+from scrapy.http import Response  # type: ignore
 
 from deepdeep.score_pages import response_max_scores
 from deepdeep.utils import get_response_domain, MaxScores

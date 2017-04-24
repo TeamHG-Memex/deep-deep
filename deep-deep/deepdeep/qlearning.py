@@ -73,15 +73,16 @@ with all features joined. It requires ~2x RAM because multiple
 10x faster.
 """
 from __future__ import absolute_import
+from collections.abc import Sized
 import random
 from typing import Callable, List, Tuple, Any, Optional
 
-import numpy as np
-from scipy import sparse
-import sklearn.base
-from sklearn.linear_model import SGDRegressor
+import numpy as np  # type: ignore
+from scipy import sparse  # type: ignore
+import sklearn.base  # type: ignore
+from sklearn.linear_model import SGDRegressor  # type: ignore
 
-from deepdeep.utils import log_time
+from deepdeep.utils import log_time, csr_nbytes
 
 
 class QLearner:
@@ -153,6 +154,9 @@ class QLearner:
     er_maxsize: int, optional
         Max size of experience replay memory. None (default) means there
         is no limit.
+    er_maxlinks: int, optional
+        Max number of links in experience replay memory.
+        None (default) means there is no limit.
     """
     def __init__(self, *,
                  double_learning: bool = True,
@@ -164,7 +168,10 @@ class QLearner:
                  on_model_changed: Optional[Callable[[], None]]=None,
                  pickle_memory: bool = True,
                  dummy: bool = False,
-                 er_maxsize: Optional[int] = None
+                 er_maxsize: Optional[int] = None,
+                 er_maxlinks: Optional[int] = None,
+                 clf_penalty: str='l2',
+                 clf_alpha: float=1e-6
                  ) -> None:
         assert 0 <= gamma < 1
         self.double_learning = double_learning
@@ -178,17 +185,17 @@ class QLearner:
         self.dummy = dummy
 
         self.clf_online = SGDRegressor(
-            penalty='l2',
+            penalty=clf_penalty,
             average=False,
             n_iter=1,
             learning_rate='constant',
             # loss='epsilon_insensitive',
-            alpha=1e-6,
+            alpha=clf_alpha,
             eta0=0.1,
         )
 
         self.clf_target = sklearn.base.clone(self.clf_online)  # type: SGDRegressor
-        self.memory = ExperienceMemory(maxsize=er_maxsize)
+        self.memory = ExperienceMemory(maxsize=er_maxsize, maxlinks=er_maxlinks)
         self.t_ = 0
 
     @classmethod
@@ -370,7 +377,7 @@ class QLearner:
         return dct
 
 
-class ExperienceMemory:
+class ExperienceMemory(Sized):
     """
     Experience replay memory.
 
@@ -388,10 +395,21 @@ class ExperienceMemory:
 
         Ring buffer would have been more aggressive pruning old observations;
         average age would have been ``maxsize/2`` with a ring buffer.
+
+    maxlinks : int, optional
+        Has the same logic as maxsize, but controls maximum number of links:
+        each observation can contain multiple links. This is useful to
+        control in case of running separate spiders for each domain,
+        as different domains have different average number of links.
     """
-    def __init__(self, maxsize: Optional[int]=None) -> None:
+    def __init__(self,
+                 maxsize: Optional[int]=None,
+                 maxlinks: Optional[int]=None,
+                 ) -> None:
         self.data = []  # type: List[Tuple[Any, Any, Any]]
         self.maxsize = maxsize
+        self.maxlinks = maxlinks
+        self._n_links = 0
 
     def add(self, as_t, AS_t1, r_t1) -> None:
         """
@@ -403,10 +421,19 @@ class ExperienceMemory:
         # TODO: In AS matrix rows of S columns usually contains the same data;
         # delta-compress them?
         item = (as_t, AS_t1, r_t1)
-        if self.maxsize is None or len(self.data) < self.maxsize:
+        too_large = False
+        if self.maxsize and len(self.data) >= self.maxsize:
+            too_large = True
+        elif self.maxlinks and self._n_links >= self.maxlinks:
+            too_large = True
+        self._n_links += AS_t1.shape[0] if AS_t1 is not None else 0
+        if not too_large:
             self.data.append(item)
         else:
             idx = random.randint(0, len(self.data)-1)
+            removed = self.data[idx]
+            if removed[1] is not None:
+                self._n_links -= removed[1].shape[0]
             self.data[idx] = item
 
     def sample(self, k: int) -> List[Tuple[Any, Any, Any]]:
@@ -419,6 +446,14 @@ class ExperienceMemory:
 
     def clear(self) -> None:
         self.data.clear()
+        self._n_links = 0
 
     def __len__(self) -> int:
         return len(self.data)
+
+    def nbytes(self) -> int:
+        """
+        Memory taken by sparse matrices in self.data.
+        """
+        return sum(csr_nbytes(as_t) + csr_nbytes(AS_t1)
+                   for as_t, AS_t1, _ in self.data)

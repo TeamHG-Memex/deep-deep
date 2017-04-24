@@ -1,0 +1,24 @@
+language: python
+sudo: false
+branches:
+    only:
+        - master
+        - /^\d\.\d+$/
+
+matrix:
+  include:
+    - python: 3.5
+      env: TOXENV=py35
+
+
+install:
+    - pip install -U pip tox codecov
+
+script: cd deep-deep && tox
+
+after_success:
+    - codecov
+
+cache:
+    directories:
+        - $HOME/.cache/pip

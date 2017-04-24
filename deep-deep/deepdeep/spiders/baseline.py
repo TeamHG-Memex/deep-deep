@@ -3,7 +3,7 @@ import re
 import random
 from urllib.parse import urlsplit
 
-import scrapy
+import scrapy  # type: ignore
 
 from deepdeep.utils import (
     get_response_domain,
