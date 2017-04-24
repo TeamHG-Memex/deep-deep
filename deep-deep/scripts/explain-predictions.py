@@ -21,7 +21,7 @@ def main():
     arg('q_model', help='Path to Q.joblib (deep-deep link model)')
     arg('data', help='Path to jl.gz file in CDR format')
     arg('output_folder', help='Where to put html output files N.html')
-    arg('--offset', type=int, default=0, help='0-based start index in data')
+    arg('--offset', type=int, help='0-based start index in data')
     arg('--limit', type=int, default=100, help='Number of documents to analyze')
     args = parser.parse_args()
 
@@ -29,18 +29,20 @@ def main():
     assert not q_model.get('page_vectorizer'), 'TODO'
     le = DictLinkExtractor()
     styles = format_html_styles()
-
+    output_folder = Path(args.output_folder)
+    output_folder.mkdir(exist_ok=True)
     with json_lines.open(args.data) as items:
-        items = islice(items, 0, args.offset)
+        if args.offset:
+            items = islice(items, args.offset, None)
         if args.limit:
             items = islice(items, args.limit)
         with multiprocessing.Pool() as pool:
             for idx, expls in enumerate(pool.imap(
                     partial(links_expls, q_model, le), items)):
                 expls.sort(reverse=True)
-                (Path(args.output_folder)
-                    .joinpath('{}.html'.format(idx + args.offset))
-                    .write_text(styles + '\n'.join(expl for _, expl in expls))
+                (output_folder
+                 .joinpath('{}.html'.format(idx + args.offset))
+                 .write_text(styles + '\n'.join(expl for _, expl in expls))
                  )
 
 

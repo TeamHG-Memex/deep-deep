@@ -40,6 +40,8 @@ def get_feature_names_scales(
             n_features += 1
             if with_scales:
                 coef_scales.append([1.])
+        else:
+            raise ValueError('Unexpected vectorizer: {}'.format(vec))
     feature_names = FeatureNames(
         all_features_names, n_features=n_features, unkn_template='FEATURE[%d]')
     if with_scales:
