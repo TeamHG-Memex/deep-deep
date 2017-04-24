@@ -14,7 +14,9 @@ from deepdeep.explain import item_links, links_explanations
 
 
 def main():
-    parser = argparse.ArgumentParser()
+    parser = argparse.ArgumentParser(
+        description='Export an explanation of deep-deep model '
+                    'predictions to html (one file per page)')
     arg = parser.add_argument
     arg('q_model', help='Path to Q.joblib (deep-deep link model)')
     arg('data', help='Path to jl.gz file in CDR format')

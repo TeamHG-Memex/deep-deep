@@ -14,12 +14,15 @@ from deepdeep.explain import item_links, get_feature_names_scales
 
 
 def main():
-    parser = argparse.ArgumentParser()
+    parser = argparse.ArgumentParser(
+        description='Export an explanation of deep-deep model '
+                    'to html or pickle')
     arg = parser.add_argument
     arg('q_model', help='Path to Q.joblib (deep-deep link model)')
-    arg('data', help='Path to jl.gz file in CDR format')
+    arg('data', help='Path to jl.gz file in CDR format '
+                     'to fit the hashing vectorizer')
     arg('--limit', type=int, default=1000,
-        help='Documents for hashing vectorizer fitting')
+        help='Limit number of documents for fitting hashing vectorizer')
     arg('--top', type=int, default=50, help='Top features (passed to eli5)')
     arg('--save-expl', help='Save pickled explanation')
     arg('--save-html', help='Save explanation in html')
