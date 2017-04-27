@@ -3,14 +3,12 @@ import argparse
 from itertools import islice
 import pickle
 
-from eli5.sklearn.explain_weights import explain_weights
+from eli5.sklearn import explain_weights_sklearn, InvertableHashingVectorizer
 from eli5.formatters import format_as_text, format_as_html
 import joblib
 import json_lines
-import numpy as np
 
-from deepdeep.links import DictLinkExtractor
-from deepdeep.explain import item_links, get_feature_names_scales
+from deepdeep.links import DictLinkExtractor, raw_html_links
 
 
 def main():
@@ -35,20 +33,16 @@ def main():
 
         print('Extracting links...')
         le = DictLinkExtractor()
-        links = [
-            link for item in items
-            for link in item_links(le, item['url'], item['raw_content'])]
+        links = [link for item in items
+                 for link in raw_html_links(le, item['url'], item['raw_content'])]
         print('Done.')
         assert not q_model.get('page_vectorizer'), 'TODO'
-        all_features_names, coef_scale = get_feature_names_scales(
-            q_model['link_vectorizer'], links)
+        vec = InvertableHashingVectorizer(q_model['link_vectorizer'])
+        vec.fit(links)
 
-        clf = q_model['Q'].clf_online
-        expl = explain_weights(
-            clf,
-            feature_names=all_features_names,
-            coef_scale=np.array(coef_scale),
-            top=args.top)
+        expl = explain_weights_sklearn(
+            q_model['Q'].clf_online, vec=vec, top=args.top)
+
         if args.save_expl:
             with open(args.save_expl, 'wb') as f:
                 pickle.dump(expl, f)

@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 import re
 from urllib.parse import urljoin
-from typing import Iterator, Dict, Optional, Set, Iterable, Union, Tuple
+from typing import Iterator, Dict, Optional, Set, Iterable, List, Tuple
 
 from parsel import Selector  # type: ignore
 from scrapy.http import TextResponse  # type: ignore
@@ -191,3 +191,15 @@ class DictLinkExtractor:
         """
         return (link for idx, link in
                 self.deduplicate_links_enumerated(links, seen_urls))
+
+
+def raw_html_links(le: DictLinkExtractor, url: str, raw_content: str) -> List[Dict]:
+    """ A helper to extract all link dicts from raw html.
+    """
+    response = TextResponse(url=url, body=raw_content, encoding='utf8')
+    return list(le.iter_link_dicts(
+        response=response,
+        limit_by_domain=False,
+        deduplicate=False,
+        deduplicate_local=True,
+    ))
