@@ -3,7 +3,7 @@ import argparse
 from itertools import islice
 import pickle
 
-from eli5.sklearn import explain_weights_sklearn, InvertableHashingVectorizer
+from eli5.sklearn import explain_weights_sklearn, invert_and_fit
 from eli5.formatters import format_as_text, format_as_html
 import joblib
 import json_lines
@@ -37,11 +37,10 @@ def main():
                  for link in raw_html_links(le, item['url'], item['raw_content'])]
         print('Done.')
         assert not q_model.get('page_vectorizer'), 'TODO'
-        vec = InvertableHashingVectorizer(q_model['link_vectorizer'])
-        vec.fit(links)
 
+        ivec = invert_and_fit(q_model['link_vectorizer'], links)
         expl = explain_weights_sklearn(
-            q_model['Q'].clf_online, vec=vec, top=args.top)
+            q_model['Q'].clf_online, vec=ivec, top=args.top)
 
         if args.save_expl:
             with open(args.save_expl, 'wb') as f:
