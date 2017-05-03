@@ -64,6 +64,23 @@ queue, a float link score is converted to an integer priority value.
 Note that in some rare cases the model might fail to generalize from
 the crawl it was trained on to the new crawl.
 
+
+Model explanation
+-----------------
+
+It's possible to explain model weights and predictions using eli5_ library.
+For that you'll need to crawl with model checkpointing enabled and
+storing items in CDR format. Crawled items are used in order to invert the
+hashing vectorizer features, and also for prediction explanation.
+
+``./scripts/explain-model.py`` can save a model explanation to pickle, html,
+or print it in the terminal. But it is hard to analyze because character
+ngram features are used.
+
+``./scripts/explain-predictions.py`` will produce an html file for each
+crawled page, where explanations for all link scores will be shown.
+
+
 Testing
 -------
 
@@ -76,6 +93,7 @@ It requires Python 3.5+, pytest_, `pytest-cov`_ and `mypy`_.
 Alternatively, run ``tox`` from ``deep-deep`` folder.
 
 
+.. _eli5: http://eli5.readthedocs.io/
 .. _pytest: http://pytest.org/latest/
 .. _pytest-cov: https://pytest-cov.readthedocs.io/
 .. _mypy: http://mypy-lang.org/
