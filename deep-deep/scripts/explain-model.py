@@ -1,9 +1,10 @@
 #!/usr/bin/env python
 import argparse
 from itertools import islice
+from pathlib import Path
 import pickle
 
-from eli5.sklearn import explain_weights_sklearn, invert_and_fit
+from eli5.sklearn import explain_weights_sklearn, invert_hashing_and_fit
 from eli5.formatters import format_as_text, format_as_html
 import joblib
 import json_lines
@@ -22,8 +23,8 @@ def main():
     arg('--limit', type=int, default=1000,
         help='Limit number of documents for fitting hashing vectorizer')
     arg('--top', type=int, default=50, help='Top features (passed to eli5)')
-    arg('--save-expl', help='Save pickled explanation')
-    arg('--save-html', help='Save explanation in html')
+    arg('--save-expl', help='Save pickled explanation', type=Path)
+    arg('--save-html', help='Save explanation in html', type=Path)
     args = parser.parse_args()
 
     q_model = joblib.load(args.q_model)
@@ -38,17 +39,16 @@ def main():
         print('Done.')
         assert not q_model.get('page_vectorizer'), 'TODO'
 
-        ivec = invert_and_fit(q_model['link_vectorizer'], links)
+        ivec = invert_hashing_and_fit(q_model['link_vectorizer'], links)
         expl = explain_weights_sklearn(
             q_model['Q'].clf_online, vec=ivec, top=args.top)
 
         if args.save_expl:
-            with open(args.save_expl, 'wb') as f:
+            with args.save_expl.open('wb') as f:
                 pickle.dump(expl, f)
             print('Pickled explanation saved to {}'.format(args.save_expl))
         if args.save_html:
-            with open(args.save_html, 'wt') as f:
-                f.write(format_as_html(expl))
+            args.save_html.write_text(format_as_html(expl), encoding='utf8')
             print('Explanation in html saved to {}'.format(args.save_html))
         if not args.save_expl and not args.save_html:
             print(format_as_text(expl))
